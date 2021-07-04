@@ -1,3 +1,4 @@
+import os
 import socket
 import pyautogui
 import time
@@ -12,6 +13,10 @@ from PyQt5.QtCore import QThread, QObject, pyqtSignal
 import qrcode
 from PIL import Image
 from PyQt5.QtCore import Qt
+
+from PIL import Image
+
+import plistlib
 
 
 def clamp(n, minn, maxn):
@@ -105,118 +110,6 @@ print("Host name: " + hostName + ", IP: " + hostIP)
 
 hostNameInBytes = str.encode(hostName)
 
-
-# def init_udp_server():
-#     # Create a datagram socket
-#
-#     UDPServerSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
-#
-#     # Bind to address and ip
-#
-#     UDPServerSocket.bind((localIP, UDPLocalPort))
-#
-#     print("UDP server up and listening")
-#
-#     # Listen for incoming datagrams
-#     moveCount = 0
-#     while (True):
-#
-#         try:
-#
-#             bytesAddressPair = UDPServerSocket.recvfrom(bufferSize)
-#
-#             print(len(bytesAddressPair))
-#             message = bytesAddressPair[0]
-#
-#             address = bytesAddressPair[1]
-#
-#             clientMsg = "Message from Client:{}".format(message)
-#             clientIP = "Client IP Address:{}".format(address)
-#
-#             print(clientMsg)
-#             print(clientIP)
-#
-#             if message.startswith('getName'.encode()):
-#                 UDPServerSocket.sendto(hostNameInBytes, address)
-#
-#             elif message.startswith('move'.encode()):
-#
-#                 start = time.time()
-#                 stringMessage = message.decode()
-#                 stringTokens = stringMessage.split(" ")
-#                 xpos = int(stringTokens[1])
-#                 ypos = int(stringTokens[2])
-#                 currentMouseX, currentMouseY = pyautogui.position()
-#
-#                 nextMouseX = currentMouseX + xpos
-#                 nextMouseY = currentMouseY + ypos
-#
-#                 nextMouseX = clamp(nextMouseX, 0, screenWidth)
-#                 nextMouseY = clamp(nextMouseY, 0, screenHeight)
-#
-#                 pyautogui.moveTo(nextMouseX, nextMouseY, logScreenshot=False, _pause=False)
-#                 end = time.time()
-#                 print(end - start)
-#
-#             elif message.startswith('click'.encode()):
-#                 print("Click....")
-#                 pyautogui.click()
-#
-#             elif message.startswith('setText'.encode()):
-#                 print("setText....")
-#                 stringMessage = message.decode()
-#                 stringTokens = stringMessage.split(" ")
-#                 lastReceiveWord = stringTokens[1]
-#
-#         except Exception as err:
-#             exception_type = type(err).__name__
-#             print("ERROR UDP: ", exception_type)
-#
-# def init_tcp_server():
-#     # Create a TCP/IP socket
-#     TCPServerSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#
-#     # Bind the socket to the port
-#     server_address = (localIP, 1029)
-#     TCPServerSocket.bind(server_address)
-#     TCPServerSocket.listen(1)
-#     print("TCP server up and listening")
-#
-#     while True:
-#         try:
-#             connection, client_address = TCPServerSocket.accept()
-#
-#             print('connection from', client_address)
-#
-#             # Receive the data in small chunks and retransmit it
-#             while True:
-#                 data = connection.recv(16)
-#                 print('received "%s"' % data)
-#                 if data:
-#                     print('sending data back to the client')
-#                     # connection.sendall(hostNameInBytes)
-#                     connection.sendto(hostNameInBytes, client_address)
-#                 else:
-#                     print('no more data from', client_address)
-#                     break
-#             # Clean up the connection
-#             connection.close()
-#             print("Connection close")
-#
-#         except Exception as err:
-#             exception_type = type(err).__name__
-#             print("ERROR: ", exception_type)
-
-
-# try:
-#     _thread.start_new_thread(init_udp_server, ())
-#     _thread.start_new_thread(init_tcp_server, ())
-#
-# except:
-#     print("Error TCP: unable to start thread")
-# while 1:
-#     pass
-# init_udp_server()
 
 class UDPWorker(QObject):
 
@@ -378,26 +271,6 @@ class TCPWorker(QObject):
         self.continue_run = False  # set the run condition to false on stop
 
 
-class Worker(QObject):
-
-    finished = pyqtSignal()  # give worker class a finished signal
-
-    def __init__(self, parent=None):
-        QObject.__init__(self, parent=parent)
-        self.continue_run = True  # provide a bool run condition for the class
-
-    def do_work(self):
-        i = 1
-        while self.continue_run:  # give the loop a stoppable condition
-            print(i)
-            QThread.sleep(1)
-            i = i + 1
-        self.finished.emit()  # emit the finished signal when the loop is done
-
-    def stop(self):
-        self.continue_run = False  # set the run condition to false on stop
-
-
 class ShowIPText(QWidget):
 
     def __init__(self):
@@ -508,6 +381,40 @@ class Gui(QWidget):
         print("Stop signal emit")
         self.stop_signal.emit()  # emit the finished signal on stop
 
+from AppKit import NSWorkspace
+
+def test_open_app():
+    # path = "/Applications/Safari.app"
+    # os.system(f"open {path}")
+
+    # # active_app_name = NSWorkspace.sharedWorkspace().frontmostApplication().localizedName()
+    # active_app_name = NSWorkspace.sharedWorkspace().runningApplications()
+    # # print(active_app_name)
+    # for currentApp in active_app_name:
+    #     print(currentApp.activationPolicy)
+    for app in NSWorkspace.sharedWorkspace().runningApplications():
+        # print(app.bundleIdentifier(), app.isActive(), app.localizedName())
+        app_url = app.bundleURL().fileSystemRepresentation().decode()
+        # print(app_url)
+        # if app_url.startswith("/Applications/") and app_url.count('/') == 2:
+        if app_url.startswith("/Applications/") and app_url.endswith(".app"):
+            print(app_url, "FFFFF")
+
+            fileName = app_url + "/Contents/Info.plist"
+
+            with open(fileName, 'rb') as fp:
+                pl = plistlib.load(fp)
+            print(pl["CFBundleIconFile"])
+
+        if app_url == "/Applications/KakaoTalk.app":
+            os.system(f"open {app_url}")
+            print(app.icon())
+
+
+
+    # fileName = "/Applications/KakaoTalk.app/Contents/Info.plist"
+
+
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
@@ -539,6 +446,7 @@ if __name__ == '__main__':
     menu.addAction(show_ip_qr)
 
     restart = QAction("Restart")
+    restart.triggered.connect(test_open_app)
     menu.addAction(restart)
 
     control_panel = QAction("Control Panels")
