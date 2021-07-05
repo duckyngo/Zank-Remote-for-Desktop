@@ -1,13 +1,14 @@
 import os
 import socket
 from enum import Enum
+from functools import partial
 
 import pyautogui
 import time
 import _thread
 import sys
 
-from PyQt5.QtGui import QIcon, QPalette, QPixmap, QImage
+from PyQt5.QtGui import QIcon, QPalette, QPixmap, QImage, QCursor, QFont
 from PyQt5.QtWidgets import (QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QSystemTrayIcon, QMenu,
                              QAction, QHBoxLayout, QLabel, QSizePolicy)
 from PyQt5.QtCore import QThread, QObject, pyqtSignal
@@ -21,10 +22,12 @@ from PIL import Image
 import plistlib
 from sys import platform
 
+
 class FlatformName(Enum):
     WINDOW = 1
     MACOS = 2
     LINUX = 3
+
 
 def clamp(n, minn, maxn):
     return max(min(maxn, n), minn)
@@ -43,31 +46,7 @@ def get_ip():
     return IP
 
 
-def getMacApplicationList():
-    app_list = []
-    app_dirs = os.listdir("/Applications")
-    print(app_dirs)
-    for app in app_dirs:
-        if app.endswith(".app"):
-            app_list.append(app)
-    return app_list
-
-
-def getMacApplicationNameString():
-    app_list = getMacApplicationList()
-    name_string = ""
-    for app in app_list:
-        name_string += app[0:-4] + "\n" + app + "\n"
-
-    return name_string
-
-
-def openMacApplication(app_name):
-    app_url = "\"/Applications/{}\"".format(app_name)
-    os.system(f"open {app_url}")
-
-
-def getFlatfromName():
+def get_platform_type():
     if platform == "linux" or platform == "linux2":
         return FlatformName.LINUX
     elif platform == "darwin":
@@ -75,14 +54,13 @@ def getFlatfromName():
     elif platform == "win32":
         return FlatformName.WINDOW
 
-# Windows...
 
-def generateQRCode():
+def generate_qr_code():
     # taking image which user wants
     # in the QR code center
-    Logo_link = '40.png'
+    logo_link = 'app_icon.png'
 
-    logo = Image.open(Logo_link)
+    logo = Image.open(logo_link)
 
     # taking base width
     basewidth = 100
@@ -105,7 +83,7 @@ def generateQRCode():
     QRcode.make()
 
     # taking color name from user
-    QRcolor = 'Green'
+    QRcolor = 'Black'
 
     # adding color to QR code
     QRimg = QRcode.make_image(
@@ -124,11 +102,10 @@ def pil2pixmap(im):
         pass
     elif im.mode == "L":
         im = im.convert("RGBA")
-    data = im.convert("RGBA").tostring("raw", "RGBA")
+    data = im.convert("RGBA").tobytes()
     qim = QImage(data, im.size[0], im.size[1], QImage.Format_ARGB32)
     pixmap = QPixmap.fromImage(qim)
     return pixmap
-
 
 
 screenWidth, screenHeight = pyautogui.size()
@@ -148,12 +125,10 @@ hostIP = get_ip()
 
 print("Host name: " + hostName + ", IP: " + hostIP)
 
-
 hostNameInBytes = str.encode(hostName)
 
 
 class UDPWorker(QObject):
-
     finished = pyqtSignal()  # give worker class a finished signal
 
     def __init__(self, parent=None):
@@ -163,10 +138,10 @@ class UDPWorker(QObject):
     def do_work(self):
         # Create a datagram socket
 
-        UDPServerSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        udp_server_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         # Bind to address and ip
 
-        UDPServerSocket.bind((localIP, UDPLocalPort))
+        udp_server_socket.bind((localIP, UDPLocalPort))
 
         print("UDP server up and listening Qt")
 
@@ -174,12 +149,12 @@ class UDPWorker(QObject):
         while self.continue_run:
 
             try:
-                bytesAddressPair = UDPServerSocket.recvfrom(bufferSize)
+                bytes_address_pair = udp_server_socket.recvfrom(bufferSize)
 
-                print(len(bytesAddressPair))
-                message = bytesAddressPair[0]
+                print(len(bytes_address_pair))
+                message = bytes_address_pair[0]
 
-                address = bytesAddressPair[1]
+                address = bytes_address_pair[1]
 
                 clientMsg = "Message from Client:{}".format(message)
                 clientIP = "Client IP Address:{}".format(address)
@@ -188,24 +163,24 @@ class UDPWorker(QObject):
                 print(clientIP)
 
                 if message.startswith('getName'.encode()):
-                    UDPServerSocket.sendto(hostNameInBytes, address)
+                    udp_server_socket.sendto(hostNameInBytes, address)
 
                 elif message.startswith('move'.encode()):
 
                     start = time.time()
-                    stringMessage = message.decode()
-                    stringTokens = stringMessage.split(" ")
-                    xpos = int(stringTokens[1])
-                    ypos = int(stringTokens[2])
-                    currentMouseX, currentMouseY = pyautogui.position()
+                    string_message = message.decode()
+                    string_tokens = string_message.split(" ")
+                    xpos = int(string_tokens[1])
+                    ypos = int(string_tokens[2])
+                    current_mouse_x, current_mouse_y = pyautogui.position()
 
-                    nextMouseX = currentMouseX + xpos
-                    nextMouseY = currentMouseY + ypos
+                    next_mouse_x = current_mouse_x + xpos
+                    next_mouse_y = current_mouse_y + ypos
 
-                    nextMouseX = clamp(nextMouseX, 0, screenWidth)
-                    nextMouseY = clamp(nextMouseY, 0, screenHeight)
+                    next_mouse_x = clamp(next_mouse_x, 0, screenWidth)
+                    next_mouse_y = clamp(next_mouse_y, 0, screenHeight)
 
-                    pyautogui.moveTo(nextMouseX, nextMouseY, logScreenshot=False, _pause=False)
+                    pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
                     end = time.time()
                     print(end - start)
 
@@ -215,56 +190,20 @@ class UDPWorker(QObject):
 
                 elif message.startswith('setText'.encode()):
                     print("setText....")
-                    stringMessage = message.decode()
-                    stringTokens = stringMessage.split(" ")
-                    lastReceiveWord = stringTokens[1]
+                    string_message = message.decode()
+                    string_tokens = string_message.split(" ")
+                    lastReceiveWord = string_tokens[1]
 
             except Exception as err:
                 exception_type = type(err).__name__
                 print("ERROR UDP: ", exception_type)
         self.finished.emit()
 
-    def init_tcp_server(self):
-        # Create a TCP/IP socket
-        TCPServerSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        # Bind the socket to the port
-        server_address = (localIP, 1029)
-        TCPServerSocket.bind(server_address)
-        TCPServerSocket.listen(1)
-        print("TCP server up and listening")
-
-        while self.continue_run:
-            try:
-                connection, client_address = TCPServerSocket.accept()
-
-                print('connection from', client_address)
-
-                # Receive the data in small chunks and retransmit it
-                while True:
-                    data = connection.recv(bufferSize)
-                    print('received "%s"' % data)
-                    if data:
-                        print('sending data back to the client')
-                        # connection.sendall(hostNameInBytes)
-                        connection.sendto(hostNameInBytes, client_address)
-                    else:
-                        print('no more data from', client_address)
-                        break
-                # Clean up the connection
-                connection.close()
-                print("Connection close")
-
-            except Exception as err:
-                exception_type = type(err).__name__
-                print("ERROR: ", exception_type)
-
     def stop(self):
         self.continue_run = False  # set the run condition to false on stop
 
 
 class TCPWorker(QObject):
-
     finished = pyqtSignal()  # give worker class a finished signal
 
     def __init__(self, parent=None):
@@ -273,71 +212,59 @@ class TCPWorker(QObject):
 
     def do_work(self):
         # Create a TCP/IP socket
-        TCPServerSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # Bind the socket to the port
         server_address = (localIP, 1029)
-        TCPServerSocket.bind(server_address)
-        TCPServerSocket.listen(1)
+        tcp_server_socket.bind(server_address)
+        tcp_server_socket.listen(1)
         print("TCP server up and listening")
 
         while self.continue_run:
             # try:
-                connection, client_address = TCPServerSocket.accept()
+            connection, client_address = tcp_server_socket.accept()
 
-                print('connection from', client_address)
+            print('connection from', client_address)
 
-                # Receive the data in small chunks and retransmit it
-                while True:
-                    data = connection.recv(bufferSize)
-                    print('received "%s"' % data)
-                    if data:
+            # Receive the data in small chunks and retransmit it
+            while True:
+                data = connection.recv(bufferSize)
+                print('received "%s"' % data)
+                if data:
 
-                        message_string = data.decode()
-                        print("message: " + message_string + ", " + message_string.strip())
-                        message_string = message_string.strip()
+                    message_string = data.decode()
+                    print("message: " + message_string + ", " + message_string.strip())
+                    message_string = message_string.strip()
 
-                        if message_string.__contains__("getAppList"):
-                            print("getAppList")
-                            name_string = getMacApplicationNameString()
-                            print(name_string)
-                            # connection.sendall(name_string.encode())
-                            name_string_bytes = name_string.encode()
-                            print(len(name_string_bytes))
-                            # connection.sendto(bytes(name_string + "\n", "utf-8"), client_address)
-                            connection.sendall(bytes(name_string + "\n", "utf-8"))
-
-                            connection.close()
-
-                        elif message_string.startswith("getAppIcon"):
-                            print("getAppIcon")
-                            # connection.close()
-
-                        elif message_string.startswith("openLink"):
-                            print("openLink")
-                            # connection.close()
-                        else:
-                            connection.close()
-
-
-
-
-                        # print('sending data back to the client')
-                        # # connection.sendall(hostNameInBytes)
-                        # connection.sendto(hostNameInBytes, client_address)
-                    else:
-                        print('no more data from', client_address)
+                    if message_string.__contains__("getAppList"):
+                        print("getAppList")
                         connection.close()
-                        break
-                # Clean up the connection
-                # connection.close()
-                # print("Connection close")
 
-            # except Exception as err:
-            #     exception_type = type(err).__name__
-            #     print("ERROR: ", exception_type)
+                    elif message_string.startswith("getAppIcon"):
+                        print("getAppIcon")
+                        connection.close()
+
+                    elif message_string.startswith("openLink"):
+                        print("openLink")
+                        connection.close()
+                    else:
+                        connection.close()
+
+                    # print('sending data back to the client')
+                    # # connection.sendall(hostNameInBytes)
+                    # connection.sendto(hostNameInBytes, client_address)
+                else:
+                    print('no more data from', client_address)
+                    connection.close()
+                    break
+            # Clean up the connection
+            # connection.close()
+            # print("Connection close")
+
+        # except Exception as err:
+        #     exception_type = type(err).__name__
+        #     print("ERROR: ", exception_type)
         self.finished.emit()
-
 
     def stop(self):
         self.continue_run = False  # set the run condition to false on stop
@@ -348,46 +275,43 @@ class ShowIPText(QWidget):
     def __init__(self):
         super().__init__()
 
-    def show_ip_window(self):
         # Buttons:
 
         self.title_lable = QLabel('Your computer IP address is: ', self)
+        self.title_lable.setFont(QFont('Arial', 16))
         self.title_lable.setAlignment(Qt.AlignCenter)
 
-        self.ip_lable = QLabel(hostIP, self)
-        self.ip_lable.setAlignment(Qt.AlignCenter)
+        self.ip_label = QLabel(hostIP, self)
+        self.ip_label.setFont(QFont('Arial', 24))
+        self.ip_label.setAlignment(Qt.AlignCenter)
+        self.ip_label.setContentsMargins(10, 40, 20, 10)
 
-
-        # QRImage = generateQRCode()
-        # pixmap = QPixmap()
-        # pixmap.loadFromData(QRImage)
-        # self.imageLabel = QLabel()
-        # self.imageLabel.setBackgroundRole(QPalette.Base)
-        # self.imageLabel.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
-        # self.imageLabel.setScaledContents(True)
-        # self.imageLabel.setPixmap(pixmap)
+        qr_image = generate_qr_code()
+        self.imageLabel = QLabel()
+        self.imageLabel.setAlignment(Qt.AlignCenter)
+        self.imageLabel.setContentsMargins(10, 30, 10, 30)
+        self.imageLabel.setPixmap(pil2pixmap(qr_image))
 
         self.btn_stop = QPushButton('Done')
         self.btn_stop.resize(self.btn_stop.sizeHint())
         self.btn_stop.move(150, 50)
 
         # GUI title, size, etc...
-        self.setGeometry(300, 300, 300, 220)
         self.setWindowTitle('Zank Remote Desktop')
         self.ip_layout = QVBoxLayout()
         self.ip_layout.addWidget(self.title_lable)
-        self.ip_layout.addWidget(self.ip_lable)
-        # self.ip_layout.addWidget(self.imageLabel)
+        self.ip_layout.addWidget(self.ip_label)
+        self.ip_layout.addWidget(self.imageLabel)
         self.ip_layout.addWidget(self.btn_stop)
         self.setLayout(self.ip_layout)
 
         self.btn_stop.clicked.connect(self.closeEvent)
 
+    def show_ip_window(self):
         self.show()
 
 
 class Gui(QWidget):
-
     stop_signal = pyqtSignal()  # make a stop signal to communicate with the worker in another thread
 
     def __init__(self):
@@ -441,8 +365,10 @@ class Gui(QWidget):
         self.tcp_worker.moveToThread(self.tcp_thread)
 
         self.tcp_worker.finished.connect(self.tcp_thread.quit)  # connect the workers finished signal to stop thread
-        self.tcp_worker.finished.connect(self.tcp_worker.deleteLater)  # connect the workers finished signal to clean up worker
-        self.tcp_thread.finished.connect(self.tcp_thread.deleteLater)  # connect threads finished signal to clean up thread
+        self.tcp_worker.finished.connect(
+            self.tcp_worker.deleteLater)  # connect the workers finished signal to clean up worker
+        self.tcp_thread.finished.connect(
+            self.tcp_thread.deleteLater)  # connect threads finished signal to clean up thread
 
         self.tcp_thread.started.connect(self.tcp_worker.do_work)
         self.tcp_thread.finished.connect(self.tcp_worker.stop)
@@ -453,53 +379,23 @@ class Gui(QWidget):
         print("Stop signal emit")
         self.stop_signal.emit()  # emit the finished signal on stop
 
-from AppKit import NSWorkspace
-
-def test_open_app():
-    # path = "/Applications/Safari.app"
-    # os.system(f"open {path}")
-
-    # # active_app_name = NSWorkspace.sharedWorkspace().frontmostApplication().localizedName()
-    # active_app_name = NSWorkspace.sharedWorkspace().runningApplications()
-    # # print(active_app_name)
-    # for currentApp in active_app_name:
-    #     print(currentApp.activationPolicy)
-    for app in NSWorkspace.sharedWorkspace().runningApplications():
-        # print(app.bundleIdentifier(), app.isActive(), app.localizedName())
-        app_url = app.bundleURL().fileSystemRepresentation().decode()
-        # print(app_url)
-        # if app_url.startswith("/Applications/") and app_url.count('/') == 2:
-        if app_url.startswith("/Applications/") and app_url.endswith(".app"):
-            print(app_url, "FFFFF")
-
-            fileName = app_url + "/Contents/Info.plist"
-
-            with open(fileName, 'rb') as fp:
-                pl = plistlib.load(fp)
-            print(pl["CFBundleIconFile"])
-
-        if app_url == "/Applications/Android File Transfer.app":
-            os.system(f"open {app_url}")
-            print(app.icon())
-
-
-
-    # fileName = "/Applications/KakaoTalk.app/Contents/Info.plist"
-
-
 
 if __name__ == '__main__':
 
-    # getMacApplicationList()
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+
+    # Set app icon
+    app_icon = QIcon("app_icon.png")
+    app.setWindowIcon(app_icon)
+
     gui = Gui()
     show_ip = ShowIPText()
 
     gui.start_server()
 
     # Create the icon
-    icon = QIcon("Your_App_Icon_rounded.png")
+    icon = QIcon("app_icon.png")
 
     # Create the tray
     tray = QSystemTrayIcon()
@@ -516,11 +412,7 @@ if __name__ == '__main__':
     show_ip_window.triggered.connect(show_ip.show_ip_window)
     menu.addAction(show_ip_window)
 
-    show_ip_qr = QAction("Show IP QR code")
-    menu.addAction(show_ip_qr)
-
     restart = QAction("Restart")
-    restart.triggered.connect(test_open_app)
     menu.addAction(restart)
 
     control_panel = QAction("Control Panels")
@@ -538,5 +430,3 @@ if __name__ == '__main__':
 
     # app.exec_()
     sys.exit(app.exec_())
-
-

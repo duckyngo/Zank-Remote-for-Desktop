@@ -1,23 +1,20 @@
-import socket
+import sys
+from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu
+from PyQt5.QtGui import QIcon
 
-msgFromClient = "Hello UDP Server"
 
-bytesToSend = str.encode(msgFromClient)
+def action():
+    print('System tray icon clicked.')
 
-serverAddressPort = ("127.0.0.1", 1028)
+app = QApplication(sys.argv)
+icon = QSystemTrayIcon(QIcon('app_icon.png'), parent=app)
+icon.activated.connect(action)
+icon.show()
 
-bufferSize = 1024
 
-# Create a UDP socket at client side
 
-UDPClientSocket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+menu = QMenu(parent=None)
+menu.aboutToShow.connect(action)
+icon.setContextMenu(menu)
 
-# Send to server using created UDP socket
-
-UDPClientSocket.sendto(bytesToSend, serverAddressPort)
-
-msgFromServer = UDPClientSocket.recvfrom(bufferSize)
-
-msg = "Message from Server {}".format(msgFromServer[0])
-
-print(msg)
+sys.exit(app.exec_())
