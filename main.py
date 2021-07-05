@@ -1,5 +1,7 @@
 import os
 import socket
+from enum import Enum
+
 import pyautogui
 import time
 import _thread
@@ -17,7 +19,12 @@ from PyQt5.QtCore import Qt
 from PIL import Image
 
 import plistlib
+from sys import platform
 
+class FlatformName(Enum):
+    WINDOW = 1
+    MACOS = 2
+    LINUX = 3
 
 def clamp(n, minn, maxn):
     return max(min(maxn, n), minn)
@@ -35,6 +42,40 @@ def get_ip():
         s.close()
     return IP
 
+
+def getMacApplicationList():
+    app_list = []
+    app_dirs = os.listdir("/Applications")
+    print(app_dirs)
+    for app in app_dirs:
+        if app.endswith(".app"):
+            app_list.append(app)
+    return app_list
+
+
+def getMacApplicationNameString():
+    app_list = getMacApplicationList()
+    name_string = ""
+    for app in app_list:
+        name_string += app[0:-4] + "\n" + app + "\n"
+
+    return name_string
+
+
+def openMacApplication(app_name):
+    app_url = "\"/Applications/{}\"".format(app_name)
+    os.system(f"open {app_url}")
+
+
+def getFlatfromName():
+    if platform == "linux" or platform == "linux2":
+        return FlatformName.LINUX
+    elif platform == "darwin":
+        return FlatformName.MACOS
+    elif platform == "win32":
+        return FlatformName.WINDOW
+
+# Windows...
 
 def generateQRCode():
     # taking image which user wants
@@ -101,7 +142,7 @@ localIP = "0.0.0.0"
 UDPLocalPort = 1028
 TCPLocalPort = 1029
 
-bufferSize = 512
+bufferSize = 4080
 hostName = socket.gethostname()
 hostIP = get_ip()
 
@@ -201,7 +242,7 @@ class UDPWorker(QObject):
 
                 # Receive the data in small chunks and retransmit it
                 while True:
-                    data = connection.recv(16)
+                    data = connection.recv(bufferSize)
                     print('received "%s"' % data)
                     if data:
                         print('sending data back to the client')
@@ -241,29 +282,60 @@ class TCPWorker(QObject):
         print("TCP server up and listening")
 
         while self.continue_run:
-            try:
+            # try:
                 connection, client_address = TCPServerSocket.accept()
 
                 print('connection from', client_address)
 
                 # Receive the data in small chunks and retransmit it
                 while True:
-                    data = connection.recv(16)
+                    data = connection.recv(bufferSize)
                     print('received "%s"' % data)
                     if data:
-                        print('sending data back to the client')
-                        # connection.sendall(hostNameInBytes)
-                        connection.sendto(hostNameInBytes, client_address)
+
+                        message_string = data.decode()
+                        print("message: " + message_string + ", " + message_string.strip())
+                        message_string = message_string.strip()
+
+                        if message_string.__contains__("getAppList"):
+                            print("getAppList")
+                            name_string = getMacApplicationNameString()
+                            print(name_string)
+                            # connection.sendall(name_string.encode())
+                            name_string_bytes = name_string.encode()
+                            print(len(name_string_bytes))
+                            # connection.sendto(bytes(name_string + "\n", "utf-8"), client_address)
+                            connection.sendall(bytes(name_string + "\n", "utf-8"))
+
+                            connection.close()
+
+                        elif message_string.startswith("getAppIcon"):
+                            print("getAppIcon")
+                            # connection.close()
+
+                        elif message_string.startswith("openLink"):
+                            print("openLink")
+                            # connection.close()
+                        else:
+                            connection.close()
+
+
+
+
+                        # print('sending data back to the client')
+                        # # connection.sendall(hostNameInBytes)
+                        # connection.sendto(hostNameInBytes, client_address)
                     else:
                         print('no more data from', client_address)
+                        connection.close()
                         break
                 # Clean up the connection
-                connection.close()
-                print("Connection close")
+                # connection.close()
+                # print("Connection close")
 
-            except Exception as err:
-                exception_type = type(err).__name__
-                print("ERROR: ", exception_type)
+            # except Exception as err:
+            #     exception_type = type(err).__name__
+            #     print("ERROR: ", exception_type)
         self.finished.emit()
 
 
@@ -406,7 +478,7 @@ def test_open_app():
                 pl = plistlib.load(fp)
             print(pl["CFBundleIconFile"])
 
-        if app_url == "/Applications/KakaoTalk.app":
+        if app_url == "/Applications/Android File Transfer.app":
             os.system(f"open {app_url}")
             print(app.icon())
 
@@ -417,6 +489,8 @@ def test_open_app():
 
 
 if __name__ == '__main__':
+
+    # getMacApplicationList()
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     gui = Gui()
