@@ -8,7 +8,7 @@ import sys
 from PySide2.QtGui import QIcon, QPalette, QPixmap, QImage, QCursor, QFont
 from PySide2.QtWidgets import (QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QSystemTrayIcon, QMenu,
                                QAction, QHBoxLayout, QLabel, QSizePolicy, QTabWidget, QMainWindow)
-from PySide2.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer
+from PySide2.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer, QThreadPool, QRunnable
 
 import qrcode
 from PIL import Image
@@ -164,6 +164,26 @@ hostNameInBytes = str.encode(hostName)
 #
 #
 #
+class Runnable(QRunnable):
+
+    def __init__(self, xpos, ypos):
+        super().__init__()
+        self.xpos = xpos
+        self.ypos = ypos
+
+    def run(self):
+        print(self.xpos, self.ypos)
+
+        current_mouse_x, current_mouse_y = pyautogui.position()
+
+        next_mouse_x = current_mouse_x + self.xpos
+        next_mouse_y = current_mouse_y + self.ypos
+
+        next_mouse_x = clamp(next_mouse_x, 0, screenWidth)
+        next_mouse_y = clamp(next_mouse_y, 0, screenHeight)
+
+        pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
+
 
 class TCPCommunication(QThread):
     new_data = Signal(object)
@@ -321,16 +341,18 @@ class UDPCommunication(QThread):
                     string_tokens = string_message.split(" ")
                     xpos = int(string_tokens[1])
                     ypos = int(string_tokens[2])
-                    current_mouse_x, current_mouse_y = pyautogui.position()
-
-                    next_mouse_x = current_mouse_x + xpos
-                    next_mouse_y = current_mouse_y + ypos
-
-                    next_mouse_x = clamp(next_mouse_x, 0, screenWidth)
-                    next_mouse_y = clamp(next_mouse_y, 0, screenHeight)
-
-                    pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
+                    # current_mouse_x, current_mouse_y = pyautogui.position()
+                    #
+                    # next_mouse_x = current_mouse_x + xpos
+                    # next_mouse_y = current_mouse_y + ypos
+                    #
+                    # next_mouse_x = clamp(next_mouse_x, 0, screenWidth)
+                    # next_mouse_y = clamp(next_mouse_y, 0, screenHeight)
+                    #
+                    # pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
                     # self.mouse_thread.mouse_event.emit(MousePoint(xpos, ypos))
+                    runnable = Runnable(xpos, ypos)
+                    QThreadPool.globalInstance().start(runnable)
                     end = time.time()
                     print(end - start)
 
