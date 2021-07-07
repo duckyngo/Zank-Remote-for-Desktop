@@ -5,18 +5,13 @@ import pyautogui
 import time
 import sys
 
-from PyQt5.QtGui import QIcon, QPalette, QPixmap, QImage, QCursor, QFont
-from PyQt5.QtWidgets import (QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QSystemTrayIcon, QMenu,
+from PySide2.QtGui import QIcon, QPalette, QPixmap, QImage, QCursor, QFont
+from PySide2.QtWidgets import (QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QSystemTrayIcon, QMenu,
                              QAction, QHBoxLayout, QLabel, QSizePolicy, QTabWidget, QMainWindow)
-from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot
+from PySide2.QtCore import Qt, QThread, QObject, Signal, Slot
 
 import qrcode
 from PIL import Image
-from PyQt5.QtCore import Qt
-
-from PIL import Image
-
-import plistlib
 from sys import platform
 
 
@@ -132,27 +127,29 @@ hostNameInBytes = str.encode(hostName)
 
 
 class UDPWorker(QObject):
-    finished = pyqtSignal()  # give worker class a finished signal
+    # finished = Signal()  # give worker class a finished signal
 
     def __init__(self, parent=None):
         QObject.__init__(self, parent=parent)
         self.continue_run = True  # provide a bool run condition for the class
+        self.signals = Communicate()
+
 
     def do_work(self):
         # Create a datagram socket
 
-        udp_server_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+        self.udp_server_socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
         # Bind to address and ip
 
-        udp_server_socket.bind((localIP, UDPLocalPort))
+        self.udp_server_socket.bind((localIP, UDPLocalPort))
 
-        print("UDP server up and listening Qt")
+        print("UDP server up and listening")
 
         # Listen for incoming datagrams
         while self.continue_run:
 
-            try:
-                bytes_address_pair = udp_server_socket.recvfrom(bufferSize)
+            # try:
+                bytes_address_pair = self.udp_server_socket.recvfrom(bufferSize)
 
                 print(len(bytes_address_pair))
                 message = bytes_address_pair[0]
@@ -166,7 +163,7 @@ class UDPWorker(QObject):
                 print(clientIP)
 
                 if message.startswith('getName'.encode()):
-                    udp_server_socket.sendto(hostNameInBytes, address)
+                    self.udp_server_socket.sendto(hostNameInBytes, address)
 
                 elif message.startswith('move'.encode()):
 
@@ -197,81 +194,93 @@ class UDPWorker(QObject):
                     string_tokens = string_message.split(" ")
                     lastReceiveWord = string_tokens[1]
 
-            except Exception as err:
-                exception_type = type(err).__name__
-                print("ERROR UDP: ", exception_type)
-        self.finished.emit()
+            # except Exception as err:
+            #     exception_type = type(err).__name__
+            #     print("ERROR UDP: ", exception_type)
+        print("self.finished.emit() UDP")
+        # self.finished.emit()
+        self.signals.finish_signal.emit()
 
+
+    @Slot()
     def stop(self):
         self.continue_run = False  # set the run condition to false on stop
+        self.udp_server_socket.close()
+        self.signals.finish_signal.emit()
+        print("self.udp_server_socket.close()")
 
 
 class TCPWorker(QObject):
-    finished = pyqtSignal()  # give worker class a finished signal
+    # finished = Signal()  # give worker class a finished signal
 
     def __init__(self, parent=None):
         QObject.__init__(self, parent=parent)
         self.continue_run = True  # provide a bool run condition for the class
+        self.signals = Communicate()
 
     def do_work(self):
         # Create a TCP/IP socket
-        tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.tcp_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # Bind the socket to the port
         server_address = (localIP, 1029)
-        tcp_server_socket.bind(server_address)
-        tcp_server_socket.listen(1)
+        self.tcp_server_socket.bind(server_address)
+        self.tcp_server_socket.listen(1)
         print("TCP server up and listening")
 
         while self.continue_run:
             # try:
-            connection, client_address = tcp_server_socket.accept()
+                connection, client_address = self.tcp_server_socket.accept()
 
-            print('connection from', client_address)
+                print('connection from', client_address)
 
-            # Receive the data in small chunks and retransmit it
-            while True:
-                data = connection.recv(bufferSize)
-                print('received "%s"' % data)
-                if data:
+                # Receive the data in small chunks and retransmit it
+                while True:
+                    data = connection.recv(bufferSize)
+                    print('received "%s"' % data)
+                    if data:
 
-                    message_string = data.decode()
-                    print("message: " + message_string + ", " + message_string.strip())
-                    message_string = message_string.strip()
+                        message_string = data.decode()
+                        print("message: " + message_string + ", " + message_string.strip())
+                        message_string = message_string.strip()
 
-                    if message_string.__contains__("getAppList"):
-                        print("getAppList")
-                        connection.close()
+                        if message_string.__contains__("getAppList"):
+                            print("getAppList")
+                            connection.close()
 
-                    elif message_string.startswith("getAppIcon"):
-                        print("getAppIcon")
-                        connection.close()
+                        elif message_string.startswith("getAppIcon"):
+                            print("getAppIcon")
+                            connection.close()
 
-                    elif message_string.startswith("openLink"):
-                        print("openLink")
-                        connection.close()
+                        elif message_string.startswith("openLink"):
+                            print("openLink")
+                            connection.close()
+                        else:
+                            connection.close()
+
+                        # print('sending data back to the client')
+                        # # connection.sendall(hostNameInBytes)
+                        # connection.sendto(hostNameInBytes, client_address)
                     else:
+                        print('no more data from', client_address)
                         connection.close()
+                        break
+                # Clean up the connection
+                # connection.close()
+                # print("Connection close")
+            # except Exception as err:
+            #     exception_type = type(err).__name__
+            #     print("ERROR: ", exception_type)
+        print("self.finished.emit() TCP")
+        # self.finished.emit()
+        self.signals.finish_signal.emit()
 
-                    # print('sending data back to the client')
-                    # # connection.sendall(hostNameInBytes)
-                    # connection.sendto(hostNameInBytes, client_address)
-                else:
-                    print('no more data from', client_address)
-                    connection.close()
-                    break
-            # Clean up the connection
-            # connection.close()
-            # print("Connection close")
-
-        # except Exception as err:
-        #     exception_type = type(err).__name__
-        #     print("ERROR: ", exception_type)
-        self.finished.emit()
-
+    @Slot()
     def stop(self):
         self.continue_run = False  # set the run condition to false on stop
-
+        self.signals.finish_signal.emit()
+        self.tcp_server_socket.close()
+        print("self.tcp_server_socket.close()")
 
 class ShowIPWindow(QWidget):
 
@@ -350,7 +359,7 @@ class ControlPanelMainWindow(QMainWindow):
 class ControlPanelTabWidget(QWidget):
 
     def __init__(self, parent):
-        super(QWidget, self).__init__(parent)
+        super(ControlPanelTabWidget, self).__init__(parent)
 
         # Initialize tab screen
         self.tabs = QTabWidget()
@@ -438,7 +447,7 @@ class ControlPanelTabWidget(QWidget):
         self.layout.addWidget(self.tabs)
         self.setLayout(self.layout)
 
-    @pyqtSlot()
+    @Slot()
     def on_click(self):
         print("\n")
         for currentQTableWidgetItem in self.tableWidget.selectedItems():
@@ -447,8 +456,6 @@ class ControlPanelTabWidget(QWidget):
 
 class ZankRemoteApplication(QApplication):
 
-    stop_signal = pyqtSignal()  # make a stop signal to communicate with the worker in another thread
-
     def __init__(self, args):
         """ In the constructor we're doing everything to get our application
             started, which is basically constructing a basic QApplication by
@@ -456,16 +463,16 @@ class ZankRemoteApplication(QApplication):
             the exec_loop."""
         QApplication.__init__(self, args)
 
-        self.thread = QThread()
+        self.udp_thread = QThread()
         self.tcp_thread = QThread()
-        self.worker = UDPWorker()
+        self.udp_worker = UDPWorker()
         self.tcp_worker = TCPWorker()
+        self.signals = Communicate()
 
         self.app_icon = QIcon("app_icon_round.png")
         self.showIpWindow = ShowIPWindow()
         self.controlPanelMainWindow = ControlPanelMainWindow()
         self.icon = QIcon("app_icon_round.png")
-
 
         self.addWidgets()
 
@@ -487,6 +494,7 @@ class ZankRemoteApplication(QApplication):
         self.menu = QMenu()
 
         self.see_tutorials = QAction("Tutorials")
+        self.see_tutorials.triggered.connect(self.thread_status)
         self.menu.addAction(self.see_tutorials)
 
         self.show_ip_window = QAction("Show IP Address")
@@ -494,6 +502,7 @@ class ZankRemoteApplication(QApplication):
         self.menu.addAction(self.show_ip_window)
 
         self.restart = QAction("Restart")
+        self.restart.triggered.connect(self.quit)
         self.menu.addAction(self.restart)
 
         self.control_panel = QAction("Control Panels")
@@ -503,7 +512,6 @@ class ZankRemoteApplication(QApplication):
         # Add a Quit option to the menu.
         self.quit_action = QAction("Quit Zank Remote")
         self.quit_action.triggered.connect(self.stop_thread)
-        self.quit_action.triggered.connect(self.quit)
         self.menu.addAction(self.quit_action)
 
         # Add the menu to the tray
@@ -511,40 +519,65 @@ class ZankRemoteApplication(QApplication):
 
         self.start_server()
 
-    def slotSayHello(self):
-        """ This is an example slot, a method that gets called when a signal is
-            emitted """
-        print ("Hello, World!")
-
     def start_server(self):
-        self.stop_signal.connect(self.worker.stop)  # connect stop signal to worker stop method
-        self.worker.moveToThread(self.thread)
+        self.udp_thread.setTerminationEnabled(True)
+        self.tcp_thread.setTerminationEnabled(True)
 
-        self.worker.finished.connect(self.thread.quit)  # connect the workers finished signal to stop thread
-        self.worker.finished.connect(self.worker.deleteLater)  # connect the workers finished signal to clean up worker
-        self.thread.finished.connect(self.thread.deleteLater)  # connect threads finished signal to clean up thread
+        self.udp_worker.moveToThread(self.udp_thread)
 
-        self.thread.started.connect(self.worker.do_work)
-        self.thread.finished.connect(self.worker.stop)
-        self.thread.start()
+        self.udp_worker.signals.finish_signal.connect(self.udp_thread.quit)  # connect the workers finished signal to stop thread
+        self.udp_worker.signals.finish_signal.connect(self.udp_worker.deleteLater)  # connect the workers finished signal to clean up worker
+        self.udp_thread.finished.connect(self.udp_thread.deleteLater)  # connect threads finished signal to clean up thread
 
-        self.stop_signal.connect(self.tcp_worker.stop)  # connect stop signal to worker stop method
+        self.udp_thread.started.connect(self.connect_udp_worker_stop_signal)
+        self.udp_thread.started.connect(self.udp_worker.do_work)
+        self.udp_thread.start()
+
         self.tcp_worker.moveToThread(self.tcp_thread)
+        self.tcp_worker.signals.finish_signal.connect(self.tcp_thread.quit)  # connect the workers finished signal to stop thread
+        self.tcp_worker.signals.finish_signal.connect(self.tcp_worker.deleteLater)  # connect the workers finished signal to clean up worker
+        self.tcp_thread.finished.connect(self.tcp_thread.deleteLater)  # connect threads finished signal to clean up thread
 
-        self.tcp_worker.finished.connect(self.tcp_thread.quit)  # connect the workers finished signal to stop thread
-        self.tcp_worker.finished.connect(
-            self.tcp_worker.deleteLater)  # connect the workers finished signal to clean up worker
-        self.tcp_thread.finished.connect(
-            self.tcp_thread.deleteLater)  # connect threads finished signal to clean up thread
-
+        self.tcp_thread.started.connect(self.connect_tcp_worker_stop_signal)
         self.tcp_thread.started.connect(self.tcp_worker.do_work)
-        self.tcp_thread.finished.connect(self.tcp_worker.stop)
         self.tcp_thread.start()
 
     # When stop_btn is clicked this runs. Terminates the worker and the thread.
     def stop_thread(self):
         print("Stop signal emit")
-        self.stop_signal.emit()  # emit the finished signal on stop
+        # self.signals.stop_signal.emit()
+        self.udp_thread.terminate()
+        self.udp_thread.quit()
+        self.udp_worker.deleteLater()
+        self.tcp_thread.terminate()
+        self.tcp_thread.quit()
+        self.tcp_worker.deleteLater()
+
+    def connect_udp_worker_stop_signal(self):
+        print("connect_udp_worker_stop_signal")
+        self.signals.stop_signal.connect(self.udp_worker.stop)
+        self.udp_thread.finished.connect(self.udp_worker.stop)
+
+    def connect_tcp_worker_stop_signal(self):
+        print("connect_tcp_worker_stop_signal")
+        self.signals.stop_signal.connect(self.tcp_worker.stop)
+        self.tcp_thread.finished.connect(self.tcp_worker.stop)
+
+    def thread_status(self):
+        print("UDP Thread: ", self.udp_thread.isRunning())
+        print("TCP Thread: ", self.tcp_thread.isRunning())
+
+    @Slot()
+    def slotSayHello(self):
+        """ This is an example slot, a method that gets called when a signal is
+            emitted """
+        print("Hello, World!")
+
+
+# Signals must inherit QObject
+class Communicate(QObject):
+    stop_signal = Signal()
+    finish_signal = Signal()
 
 if __name__ == '__main__':
     app = ZankRemoteApplication(sys.argv)
