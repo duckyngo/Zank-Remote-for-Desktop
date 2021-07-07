@@ -16,8 +16,8 @@ class Communication(QtCore.QThread):
     def __init__(self):
         QtCore.QThread.__init__(self, parent=None)
         print("comm.. init")
-        self.port = 5678
-        self.ip = ""
+        self.port = 9200
+        self.ip = "0.0.0.0"
         self.is_server = False
         self.reconnect_server = False
         # socket for client or server socket for communication
@@ -56,18 +56,19 @@ class Communication(QtCore.QThread):
 
     def get_message(self):
         print("get_message")
-        data = self.s.recv(1).strip().decode("utf-8")
-        if data == "!":
-            data = self.s.recv(1).strip().decode("utf-8")
-            length = 0
-            while data != "!":
-                length = length*10+int(data)
-                data = self.s.recv(1).strip().decode("utf-8")
-            try:
-                data = json.loads(self.s.recv(length).strip().decode("utf-8"))
-                self.new_data.emit(data)
-            except ValueError:
-                print("JSON error\n")
+        data = self.s.recv(1024).strip().decode("utf-8")
+        print("Get: ", data)
+        # if data == "!":
+        #     data = self.s.recv(1).strip().decode("utf-8")
+        #     length = 0
+        #     while data != "!":
+        #         length = length*10+int(data)
+        #         data = self.s.recv(1).strip().decode("utf-8")
+        #     try:
+        #         data = json.loads(self.s.recv(length).strip().decode("utf-8"))
+        #         self.new_data.emit(data)
+        #     except ValueError:
+        #         print("JSON error\n")
 
     def stop(self):
         print("comm...stop")
