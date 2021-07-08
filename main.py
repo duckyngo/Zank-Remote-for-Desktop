@@ -5,14 +5,19 @@ import pyautogui
 import time
 import sys
 
+from PySide2 import QtWidgets
 from PySide2.QtGui import QIcon, QPalette, QPixmap, QImage, QCursor, QFont
 from PySide2.QtWidgets import (QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QSystemTrayIcon, QMenu,
-                               QAction, QHBoxLayout, QLabel, QSizePolicy, QTabWidget, QMainWindow)
-from PySide2.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer, QThreadPool, QRunnable
+                               QAction, QHBoxLayout, QLabel, QSizePolicy, QTabWidget, QMainWindow, QScrollArea)
+from PySide2.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer, QThreadPool, QRunnable, QCoreApplication, QUrl
 
 import qrcode
 from PIL import Image
 from sys import platform
+
+from AppKit import NSWorkspace
+from Foundation import NSURL
+from PySide2.QtWebEngineWidgets import QWebEngineView
 
 
 class FlatformName(Enum):
@@ -121,59 +126,28 @@ bufferSize = 4080
 hostName = socket.gethostname()
 hostIP = get_ip()
 
+isRunning = False
+
 print("Host name: " + hostName + ", IP: " + hostIP)
 
 hostNameInBytes = str.encode(hostName)
 
 
-# class MousePoint:
-#
-#     xpos:int
-#     ypos:int
-#
-#     def __init__(self, xpos, ypos):
-#         self.xpos = xpos
-#         self.ypos = ypos
-#
-#
-# class MouseControl(QThread):
-#     mouse_event = Signal(object)
-#
-#     def __init__(self):
-#         QThread.__init__(self, parent=None)
-#         print("MouseControl.. init")
-#
-#     def run(self):
-#
-#         print("MouseControl.. init")
-#         self.mouse_event.connect(self.move)
-#
-#     @Slot(MousePoint)
-#     def move(self, item):
-#
-#         current_mouse_x, current_mouse_y = pyautogui.position()
-#
-#         next_mouse_x = current_mouse_x + item.xpos
-#         next_mouse_y = current_mouse_y + item.ypos
-#
-#         next_mouse_x = clamp(next_mouse_x, 0, screenWidth)
-#         next_mouse_y = clamp(next_mouse_y, 0, screenHeight)
-#
-#         pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
-#
-#
-#
-#
 class Runnable(QRunnable):
 
     def __init__(self, xpos, ypos):
         super().__init__()
         self.xpos = xpos
         self.ypos = ypos
+        self.isRunning = False
+        self.isFinished = False
 
     def run(self):
-        print(self.xpos, self.ypos)
+        start = time.time()
 
+
+        self.isRunning = True
+        print(self.xpos, self.ypos)
         current_mouse_x, current_mouse_y = pyautogui.position()
 
         next_mouse_x = current_mouse_x + self.xpos
@@ -183,6 +157,11 @@ class Runnable(QRunnable):
         next_mouse_y = clamp(next_mouse_y, 0, screenHeight)
 
         pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
+        self.isRunning = False
+        self.isFinished = True
+
+        end = time.time()
+        print("Runnable time: ", end - start)
 
 
 class TCPCommunication(QThread):
@@ -280,6 +259,12 @@ class UDPCommunication(QThread):
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.is_connected = False
         self.running = True
+        self.runnable = None
+        self.count = 0
+        self.threadpool = QThreadPool()
+        self.threadpool.setExpiryTimeout(300)
+        self.threadpool.setMaxThreadCount(50)
+        print("Max Thread Pool Count: ", self.threadpool.maxThreadCount())
 
 
     def set_ip(self, ip):
@@ -341,18 +326,18 @@ class UDPCommunication(QThread):
                     string_tokens = string_message.split(" ")
                     xpos = int(string_tokens[1])
                     ypos = int(string_tokens[2])
-                    # current_mouse_x, current_mouse_y = pyautogui.position()
-                    #
-                    # next_mouse_x = current_mouse_x + xpos
-                    # next_mouse_y = current_mouse_y + ypos
-                    #
-                    # next_mouse_x = clamp(next_mouse_x, 0, screenWidth)
-                    # next_mouse_y = clamp(next_mouse_y, 0, screenHeight)
-                    #
-                    # pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
-                    # self.mouse_thread.mouse_event.emit(MousePoint(xpos, ypos))
-                    runnable = Runnable(xpos, ypos)
-                    QThreadPool.globalInstance().start(runnable)
+                    if self.runnable is None or self.runnable.isFinished:
+                        self.count = 0
+                        self.runnable = Runnable(xpos, ypos)
+                        # QThreadPool.globalInstance().setExpiryTimeout(500)
+                        self.threadpool.start(self.runnable, priority=QThread.Priority.HighestPriority)
+                    else:
+                        self.count += 1
+                        print("isRunning True", self.count, self.threadpool.activeThreadCount())
+                        if self.count > 3:
+                            self.threadpool.clear()
+                            self.runnable = None
+
                     end = time.time()
                     print(end - start)
 
@@ -372,98 +357,181 @@ class UDPCommunication(QThread):
     def dissconect(self):
         self.server.close()
 
-
-class TCPCommunication(QThread):
-    new_data = Signal(object)
+class TutorialMainWindow(QMainWindow):
 
     def __init__(self):
-        QThread.__init__(self, parent=None)
-        print("comm.. init")
-        self.port = 9200
-        self.ip = "0.0.0.0"
-        self.is_server = False
-        self.reconnect_server = False
-        # socket for client or server socket for communication
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # socket for server
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.is_connected = False
-        self.running = True
+        super().__init__()
+        self.initUI()
 
-    def set_ip(self, ip):
-        self.ip = ip
+    def initUI(self):
+        self.scroll = QScrollArea()             # Scroll Area which contains the widgets, set as the centralWidget
+        self.widget = QWidget()                 # Widget that contains the collection of Vertical Box
+        self.vbox = QVBoxLayout()               # The Vertical Box that contains the Horizontal Boxes of  labels and buttons
 
-    def make_connect(self):
-        print("make_connect")
-        self.s.connect((self.ip, self.port))
-        self.is_server = False
-        self.is_connected = True
-        self.start()
 
-    def make_server(self):
-        print("make_server")
-        self.server.bind(('', self.port))
-        self.is_server = True
-        self.reconnect_server = True
-        self.start()
+        self.notice_title = QLabel("Notice:", self)
+        self.notice_title_font = QFont('Arial', 26)
+        self.notice_title_font.setBold(True)
+        self.notice_title.setFont(self.notice_title_font)
+        self.notice_title.setAlignment(Qt.AlignLeft)
 
-    def send_message(self, message):
-        print("send_message")
-        if self.is_connected:
-            # msg_json = json.dumps(message).encode()
-            msg_json = "fff"
-            header = "!" + str(len(msg_json)) + "!"
-            msg = b''.join([header.encode(), msg_json])
-            self.s.send(msg)
+        self.notice_detail = QLabel('macOS has significantly enhanced the security & privacy protection, therefore it requires re-authorization when using Remote Mouse or a specific feature for the first time under macOS, otherwise Remote Mouse will not be able to work. This is very similar to how you authorize an app on the iPhone.', self)
+        self.notice_detail_font = QFont('Arial', 16)
+        self.notice_detail_font.setBold(True)
+        self.notice_detail.setFont(self.notice_detail_font)
+        self.notice_detail.setAlignment(Qt.AlignLeft)
+        self.notice_detail.setContentsMargins(10, 40, 20, 10)
+        self.notice_detail.setWordWrap(True)
 
-    def stop(self):
-        print("comm...stop")
-        if self.is_connected:
-            self.is_connected = False
-            self.s.close()
-            if self.is_server:
-                self.server.close()
-        self.running = False
+        self.accessibility_title = QLabel("Accessibility", self)
+        self.accessibility_title_font = QFont('Arial', 26)
+        self.accessibility_title_font.setBold(True)
+        self.accessibility_title.setFont(self.accessibility_title_font)
+        self.accessibility_title.setAlignment(Qt.AlignLeft)
+        
+        self.accessibility_detail = QLabel("The first time to use Remote Mouse after connecting to the Mac, you will be prompted to grant access.", self)
+        self.accessibility_detail_font = QFont('Arial', 16)
+        self.accessibility_detail_font.setBold(True)
+        self.accessibility_detail.setFont(self.accessibility_detail_font)
+        self.accessibility_detail.setAlignment(Qt.AlignLeft)
+        self.accessibility_detail.setContentsMargins(10, 40, 20, 10)
+        self.accessibility_detail.setWordWrap(True)
+        
+        self.accessibility_detail_step1 = QLabel("1. Choose \"Go to Accessibility\" to open the Accessibility window.", self)
+        self.accessibility_detail_step1_font = QFont('Arial', 16)
+        self.accessibility_detail_step1_font.setBold(True)
+        self.accessibility_detail_step1.setFont(self.accessibility_detail_step1_font)
+        self.accessibility_detail_step1.setAlignment(Qt.AlignLeft)
+        self.accessibility_detail_step1.setWordWrap(True)
+        
+        self.accessibility_detail_step2 = QLabel("2. Click the lock icon in the lower left corner and enter your Mac password to unlock it.", self)
+        self.accessibility_detail_step2_font = QFont('Arial', 16)
+        self.accessibility_detail_step2_font.setBold(True)
+        self.accessibility_detail_step2.setFont(self.accessibility_detail_step2_font)
+        self.accessibility_detail_step2.setAlignment(Qt.AlignLeft)
+        self.accessibility_detail_step2.setWordWrap(True)
 
-    def run(self):
-        print("running....")
-        while self.running:
+        self.appPixmap_2 = QPixmap('tut1.png')
+        self.access_step_2 = QLabel()
+        self.access_step_2.setAlignment(Qt.AlignCenter)
+        self.scaled = self.appPixmap_2.scaled(self.access_step_2.size(), Qt.KeepAspectRatio)
+        self.access_step_2.setPixmap(self.scaled)
+        self.sp = self.access_step_2.sizePolicy()
+        self.sp.setHorizontalPolicy(QSizePolicy.Maximum)
+        self.access_step_2.setSizePolicy(self.sp)
+        
+        self.accessibility_detail_step3 = QLabel("3. Tick Remote Mouse in the list on the right.", self)
+        self.accessibility_detail_step3_font = QFont('Arial', 16)
+        self.accessibility_detail_step3_font.setBold(True)
+        self.accessibility_detail_step3.setFont(self.accessibility_detail_step3_font)
+        self.accessibility_detail_step3.setAlignment(Qt.AlignLeft)
+        self.accessibility_detail_step3.setWordWrap(True)
 
-            try:
-                self.server.listen(1)
-                self.s, addr = self.server.accept()
-                self.reconnect_server = False
-                self.is_connected = True
-                print(addr)
+        self.appPixmap_3 = QPixmap('tut1.png')
+        self.access_step_3 = QLabel()
+        self.access_step_3.setAlignment(Qt.AlignCenter)
+        self.scaled = self.appPixmap_3.scaled(self.access_step_3.size(), Qt.KeepAspectRatio)
+        self.access_step_3.setPixmap(self.scaled)
+        self.sp = self.access_step_3.sizePolicy()
+        self.sp.setHorizontalPolicy(QSizePolicy.Maximum)
+        self.access_step_3.setSizePolicy(self.sp)
 
-                data = self.s.recv(1024).strip().decode("utf-8")
-                print("Get: ", data)
+        self.btn_stop = QPushButton('Go to Accessibility')
+        self.btn_stop.resize(self.btn_stop.sizeHint())
+        self.btn_stop.move(150, 100)
 
-            except Exception as err:
-                exception_type = type(err).__name__
-                print("ERROR UDP: ", exception_type)
+        self.vbox.addWidget(self.notice_title)
+        self.vbox.addWidget(self.notice_detail)
+        self.vbox.addWidget(self.accessibility_title)
+        self.vbox.addWidget(self.accessibility_detail)
 
-    def dissconect(self):
-        self.s.close()
-        self.server.close()
+        self.vbox.addWidget(self.accessibility_detail_step1)
+        self.vbox.addWidget(self.accessibility_detail_step2)
+        self.vbox.addWidget(self.access_step_2)
+        self.vbox.addWidget(self.accessibility_detail_step3)
+        self.vbox.addWidget(self.access_step_3)
+        self.vbox.addWidget(self.btn_stop)
+
+        self.btn_stop.clicked.connect(self.open_accessibility_setting)
+
+        # for i in range(1,50):
+        #     object = QLabel("TextLabel")
+        #     self.vbox.addWidget(object)
+
+        self.widget.setLayout(self.vbox)
+
+        #Scroll Area Properties
+        self.scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setWidget(self.widget)
+
+        self.setCentralWidget(self.scroll)
+
+        self.setGeometry(600, 100, 1000, 900)
+        self.setWindowTitle('Zank Remote Tutorials')
+        return
+
+    def open_accessibility_setting(self):
+
+        sys_pref_link = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility'
+
+        # create workspace object
+        workspace = NSWorkspace.sharedWorkspace()
+
+        # Open System Preference
+        workspace.openURL_(NSURL.URLWithString_(sys_pref_link))
+
+
+    def show_top(self):
+        self.show()
+        self.setWindowState(self.windowState() & Qt.WindowMinimized | Qt.WindowActive)
+        self.raise_()
+        # this will activate the window
+        self.activateWindow()
+
+
+
+class WebViewMainWindow(QMainWindow):
+
+    def __init__(self, url):
+        super().__init__()
+        self.initUI()
+        self.url = url
+
+    def initUI(self):
+        self.view = QWebEngineView()
+        self.app_icon = QIcon("app_icon_round.png")
+
+        self.view.load(QUrl(self.url))
+
+        self.setCentralWidget(self.view)
+
+        self.setGeometry(600, 100, 1000, 900)
+        self.setWindowIcon(self.app_icon)
+        self.setWindowTitle('Zank Remote Tutorials')
+        return
+
+    def show_top(self):
+        self.show()
+        self.setWindowState(self.windowState() & Qt.WindowMinimized | Qt.WindowActive)
+        self.raise_()
+        # this will activate the window
+        self.activateWindow()
 
 
 class ShowIPWindow(QWidget):
 
-    def __init__(self):
-        super().__init__()
-
+    def __init__(self, parent=None):
+        super(ShowIPWindow, self).__init__(parent)
         # Buttons:
-
         self.title_lable = QLabel('Your computer IP address is: ', self)
         self.title_label_font = QFont('Arial', 16)
         self.title_label_font.setBold(True)
         self.title_lable.setFont(self.title_label_font)
         self.title_lable.setAlignment(Qt.AlignCenter)
 
-        self.ip_label = QLabel(hostIP, self)
+        self.ip_label = QLabel(get_ip(), self)
         self.ip_label_font = QFont('Arial', 26)
         self.ip_label_font.setBold(True)
         self.ip_label.setFont(self.ip_label_font)
@@ -516,6 +584,9 @@ class ControlPanelMainWindow(QMainWindow):
         self.table_widget = ControlPanelTabWidget(self)
         self.setCentralWidget(self.table_widget)
 
+        # self.setWindowFlags(Qt.SplashScreen | Qt.FramelessWindowHint)
+
+
     def show_top(self):
         self.show()
         self.setWindowState(self.windowState() & Qt.WindowMinimized | Qt.WindowActive)
@@ -549,7 +620,7 @@ class ControlPanelTabWidget(QWidget):
         self.name_label.setContentsMargins(10, 40, 20, 10)
         self.name_label.setAlignment(Qt.AlignLeft)
 
-        self.ip_label = QLabel("Computer IP Address: " + hostIP, self)
+        self.ip_label = QLabel("Computer IP Address: " + get_ip(), self)
         self.ip_label_font = QFont('Arial', 20)
         self.ip_label_font.setBold(True)
         self.ip_label.setFont(self.ip_label_font)
@@ -630,8 +701,12 @@ class ZankRemoteApplication(QApplication):
             its __init__ method, then adding our widgets and finally starting
             the exec_loop."""
         QApplication.__init__(self, args)
+
+        self.setQuitOnLastWindowClosed(False)
         # Communication
-        # self.mouse_control = MouseControl()
+        self.setApplicationName("Zank Remote Desktop")
+        self.setOrganizationName("Zank Remote")
+        self.setOrganizationDomain("https://zankremote.com")
 
         self.udp_communication = UDPCommunication()
         self.udp_communication.make_server()
@@ -641,8 +716,12 @@ class ZankRemoteApplication(QApplication):
 
         self.app_icon = QIcon("app_icon_round.png")
         self.showIpWindow = ShowIPWindow()
-        self.controlPanelMainWindow = ControlPanelMainWindow()
         self.icon = QIcon("app_icon_round.png")
+
+        self.controlPanelMainWindow = ControlPanelMainWindow()
+        self.showIpWindow = ShowIPWindow()
+
+        self.tutorialsWindow = TutorialMainWindow()
 
         self.addWidgets()
 
@@ -653,8 +732,6 @@ class ZankRemoteApplication(QApplication):
         # Set app icon
         self.setWindowIcon(self.app_icon)
 
-        # Create the icon
-
         # Create the tray
         self.tray = QSystemTrayIcon()
         self.tray.setIcon(self.icon)
@@ -664,16 +741,12 @@ class ZankRemoteApplication(QApplication):
         self.menu = QMenu()
 
         self.see_tutorials = QAction("Tutorials")
-        # self.see_tutorials.triggered.connect(self.thread_status)
+        self.see_tutorials.triggered.connect(self.tutorialsWindow.show_top)
         self.menu.addAction(self.see_tutorials)
 
         self.show_ip_window = QAction("Show IP Address")
         self.show_ip_window.triggered.connect(self.showIpWindow.show_top)
         self.menu.addAction(self.show_ip_window)
-
-        self.restart = QAction("Restart")
-        self.restart.triggered.connect(self.quit)
-        self.menu.addAction(self.restart)
 
         self.control_panel = QAction("Control Panels")
         self.control_panel.triggered.connect(self.controlPanelMainWindow.show_top)
@@ -687,6 +760,9 @@ class ZankRemoteApplication(QApplication):
 
         # Add the menu to the tray
         self.tray.setContextMenu(self.menu)
+
+        # TODO: Check and stop all thread before quit application
+        # self.aboutToQuit.connect(self.closeEvent()
 
     # When stop_btn is clicked this runs. Terminates the worker and the thread.
     def stop_thread(self):
@@ -712,9 +788,20 @@ class ZankRemoteApplication(QApplication):
         else:
             return False
 
+    def closeEvent(self, event):
+        close = QtWidgets.QMessageBox.question(self,
+                                               "QUIT",
+                                               "Are you sure want to stop process?",
+                                               QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+        if close == QtWidgets.QMessageBox.Yes:
+            event.accept()
+        else:
+            event.ignore()
+
+
 
 if __name__ == '__main__':
     app = ZankRemoteApplication(sys.argv)
-    app.setQuitOnLastWindowClosed(False)
     app.exec_()
+
     # sys.exit(app.exec_())
