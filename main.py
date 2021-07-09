@@ -10,352 +10,37 @@ from PySide2.QtGui import QIcon, QPalette, QPixmap, QImage, QCursor, QFont
 from PySide2.QtWidgets import (QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QSystemTrayIcon, QMenu,
                                QAction, QHBoxLayout, QLabel, QSizePolicy, QTabWidget, QMainWindow, QScrollArea)
 from PySide2.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer, QThreadPool, QRunnable, QCoreApplication, QUrl
+from PySide2.QtWebEngineWidgets import QWebEngineView
 
 import qrcode
 from PIL import Image
 from sys import platform
 
-from AppKit import NSWorkspace
-from Foundation import NSURL
-from PySide2.QtWebEngineWidgets import QWebEngineView
+from sys import platform as _platform
+
+import communication
+import utils
 
 
-class FlatformName(Enum):
+class PlatformName(Enum):
     WINDOW = 1
     MACOS = 2
     LINUX = 3
 
 
-def clamp(n, minn, maxn):
-    return max(min(maxn, n), minn)
-
-
-def get_ip():
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # doesn't even have to be reachable
-        s.connect(('10.255.255.255', 1))
-        IP = s.getsockname()[0]
-    except Exception:
-        IP = '127.0.0.1'
-    finally:
-        s.close()
-    return IP
-
-
-def get_platform_type():
-    if platform == "linux" or platform == "linux2":
-        return FlatformName.LINUX
-    elif platform == "darwin":
-        return FlatformName.MACOS
-    elif platform == "win32":
-        return FlatformName.WINDOW
-
-
-def generate_qr_code():
-    # taking image which user wants
-    # in the QR code center
-    logo_link = 'app_icon_rgb.jpg'
-
-    logo = Image.open(logo_link)
-
-    # taking base width
-    basewidth = 70
-
-    # adjust image size
-    wpercent = (basewidth / float(logo.size[0]))
-    hsize = int((float(logo.size[1]) * float(wpercent)))
-    logo = logo.resize((basewidth, hsize), Image.ANTIALIAS)
-    QRcode = qrcode.QRCode(
-        error_correction=qrcode.constants.ERROR_CORRECT_H
-    )
-
-    # taking url or text
-    url = hostIP
-
-    # addingg URL or text to QRcode
-    QRcode.add_data(url)
-
-    # generating QR code
-    QRcode.make()
-
-    # taking color name from user
-    QRcolor = 'Black'
-
-    # adding color to QR code
-    QRimg = QRcode.make_image().convert('RGB')
-
-    # set size of QR code
-    pos = ((QRimg.size[0] - logo.size[0]) // 2,
-           (QRimg.size[1] - logo.size[1]) // 2)
-
-    QRimg.paste(logo, pos)
-
-    return QRimg
-
-
-def pil2pixmap(im):
-    if im.mode == "RGB":
-        r, g, b = im.split()
-        im = Image.merge("RGB", (b, g, r))
-    elif im.mode == "RGBA":
-        r, g, b, a = im.split()
-        im = Image.merge("RGBA", (b, g, r, a))
-    elif im.mode == "L":
-        im = im.convert("RGBA")
-
-    im2 = im.convert("RGBA")
-    data = im2.tobytes("raw", "RGBA")
-    qim = QImage(data, im.size[0], im.size[1], QImage.Format_ARGB32)
-    pixmap = QPixmap.fromImage(qim)
-    return pixmap
-
-
-screenWidth, screenHeight = pyautogui.size()
-currentMouseX, currentMouseY = pyautogui.position()
-
-pyautogui.PAUSE = 0
-pyautogui.FAILSAFE = False
-
-localIP = "0.0.0.0"
-
-UDPLocalPort = 1028
-TCPLocalPort = 1029
-
-bufferSize = 4080
-hostName = socket.gethostname()
-hostIP = get_ip()
-
-isRunning = False
-
-print("Host name: " + hostName + ", IP: " + hostIP)
-
-hostNameInBytes = str.encode(hostName)
-
-
-class Runnable(QRunnable):
-
-    def __init__(self, xpos, ypos):
-        super().__init__()
-        self.xpos = xpos
-        self.ypos = ypos
-        self.isRunning = False
-        self.isFinished = False
-
-    def run(self):
-        start = time.time()
-
-
-        self.isRunning = True
-        print(self.xpos, self.ypos)
-        current_mouse_x, current_mouse_y = pyautogui.position()
-
-        next_mouse_x = current_mouse_x + self.xpos
-        next_mouse_y = current_mouse_y + self.ypos
-
-        next_mouse_x = clamp(next_mouse_x, 0, screenWidth)
-        next_mouse_y = clamp(next_mouse_y, 0, screenHeight)
-
-        pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
-        self.isRunning = False
-        self.isFinished = True
-
-        end = time.time()
-        print("Runnable time: ", end - start)
-
-
-class TCPCommunication(QThread):
-    new_data = Signal(object)
-
-    def __init__(self):
-        QThread.__init__(self, parent=None)
-        print("comm.. init")
-        self.port = 9200
-        self.ip = "0.0.0.0"
-        self.is_server = False
-        self.reconnect_server = False
-        # socket for client or server socket for communication
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # socket for server
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.is_connected = False
-        self.running = True
-
-    def set_ip(self, ip):
-        self.ip = ip
-
-    def make_connect(self):
-        print("make_connect")
-        self.s.connect((self.ip, self.port))
-        self.is_server = False
-        self.is_connected = True
-        self.start()
-
-    def make_server(self):
-        print("make_server")
-        self.server.bind(('', self.port))
-        self.is_server = True
-        self.reconnect_server = True
-        self.start()
-
-    def send_message(self, message):
-        print("send_message")
-        if self.is_connected:
-            # msg_json = json.dumps(message).encode()
-            msg_json = "fff"
-            header = "!" + str(len(msg_json)) + "!"
-            msg = b''.join([header.encode(), msg_json])
-            self.s.send(msg)
-
-    def stop(self):
-        print("comm...stop")
-        if self.is_connected:
-            self.is_connected = False
-            self.s.close()
-            if self.is_server:
-                self.server.close()
-        self.running = False
-
-    def run(self):
-        print("running....")
-        while self.running:
-
-            try:
-                self.server.listen(1)
-                self.s, addr = self.server.accept()
-                self.reconnect_server = False
-                self.is_connected = True
-                print(addr)
-
-                data = self.s.recv(1024).strip().decode("utf-8")
-                print("Get: ", data)
-
-            except Exception as err:
-                exception_type = type(err).__name__
-                print("ERROR UDP: ", exception_type)
-
-    def dissconect(self):
-        self.s.close()
-        self.server.close()
-
-
-class UDPCommunication(QThread):
-    new_data = Signal(object)
-
-    def __init__(self):
-        QThread.__init__(self, parent=None)
-        print("comm.. init")
-        self.port = 1028
-        self.ip = "0.0.0.0"
-        self.is_server = False
-        self.reconnect_server = False
-        # socket for client or server socket for communication
-        # self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        # socket for server
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.is_connected = False
-        self.running = True
-        self.runnable = None
-        self.count = 0
-        self.threadpool = QThreadPool()
-        self.threadpool.setExpiryTimeout(300)
-        self.threadpool.setMaxThreadCount(50)
-        print("Max Thread Pool Count: ", self.threadpool.maxThreadCount())
-
-
-    def set_ip(self, ip):
-        self.ip = ip
-
-    def make_connect(self):
-        print("UDP make_connect...")
-        self.s.connect((self.ip, self.port))
-        self.is_server = False
-        self.is_connected = True
-        self.start()
-
-    def make_server(self):
-        print("UDP make_server...")
-        self.server.bind((self.ip, self.port))
-        self.is_server = True
-        self.reconnect_server = True
-        self.start()
-
-    def send_message(self, message):
-        print("send_mesdssage udp")
-        if self.is_connected:
-            # msg_json = json.dumps(message).encode()
-            msg_json = "fff"
-            header = "!" + str(len(msg_json)) + "!"
-            msg = b''.join([header.encode(), msg_json])
-            self.s.sendall(msg)
-
-    def stop(self):
-        print("UDP stop...")
-        if self.is_connected:
-            self.is_connected = False
-            self.s.close()
-            if self.is_server:
-                self.server.close()
-        self.running = False
-
-    def run(self):
-        print("UDP running...")
-        while self.running:
-            # try:
-
-                bytes_address_pair = self.server.recvfrom(1028)
-                message, address = bytes_address_pair[0], bytes_address_pair[1]
-
-                clientMsg = "Message from Client:{}".format(message)
-                clientIP = "Client IP Address:{}".format(address)
-
-                print(clientMsg)
-                print(clientIP)
-
-                if message.startswith('getName'.encode()):
-                    self.server.sendto(hostNameInBytes, address)
-
-                elif message.startswith('move'.encode()):
-
-                    start = time.time()
-                    string_message = message.decode()
-                    string_tokens = string_message.split(" ")
-                    xpos = int(string_tokens[1])
-                    ypos = int(string_tokens[2])
-                    if self.runnable is None or self.runnable.isFinished:
-                        self.count = 0
-                        self.runnable = Runnable(xpos, ypos)
-                        # QThreadPool.globalInstance().setExpiryTimeout(500)
-                        self.threadpool.start(self.runnable, priority=QThread.Priority.HighestPriority)
-                    else:
-                        self.count += 1
-                        print("isRunning True", self.count, self.threadpool.activeThreadCount())
-                        if self.count > 3:
-                            self.threadpool.clear()
-                            self.runnable = None
-
-                    end = time.time()
-                    print(end - start)
-
-                elif message.startswith('click'.encode()):
-                    print("Click....")
-                    pyautogui.click()
-
-                elif message.startswith('setText'.encode()):
-                    print("setText....")
-                    string_message = message.decode()
-                    string_tokens = string_message.split(" ")
-                    lastReceiveWord = string_tokens[1]
-            # except Exception as err:
-            #     exception_type = type(err).__name__
-            #     print("ERROR UDP: ", exception_type, err)
-
-    def dissconect(self):
-        self.server.close()
+if _platform == "darwin":
+    # MAC OS X
+    from AppKit import NSWorkspace
+    from Foundation import NSURL
+    PLATFORM_NAME = PlatformName.MACOS
+
+elif _platform == "linux" or _platform == "linux2":
+    # Linux
+    PLATFORM_NAME = PlatformName.LINUX
+
+elif _platform == "win32":
+    # Windows
+    PLATFORM_NAME = PlatformName.WINDOW
 
 class TutorialMainWindow(QMainWindow):
 
@@ -531,15 +216,15 @@ class ShowIPWindow(QWidget):
         self.title_lable.setFont(self.title_label_font)
         self.title_lable.setAlignment(Qt.AlignCenter)
 
-        self.ip_label = QLabel(get_ip(), self)
+        self.ip_label = QLabel(utils.get_ip(), self)
         self.ip_label_font = QFont('Arial', 26)
         self.ip_label_font.setBold(True)
         self.ip_label.setFont(self.ip_label_font)
         self.ip_label.setContentsMargins(10, 40, 20, 10)
         self.ip_label.setAlignment(Qt.AlignCenter)
 
-        qr_image = generate_qr_code()
-        qr_pixmap = pil2pixmap(qr_image)
+        qr_image = utils.generate_qr_code(utils.get_ip())
+        qr_pixmap = utils.pil2pixmap(qr_image)
         self.imageLabel = QLabel()
         self.imageLabel.setAlignment(Qt.AlignCenter)
         self.imageLabel.setContentsMargins(10, 30, 10, 30)
@@ -613,22 +298,22 @@ class ControlPanelTabWidget(QWidget):
 
         # Create first tab
 
-        self.name_label = QLabel("Computer Name: " + hostName, self)
+        self.name_label = QLabel("Computer Name: " + utils.get_computer_host_name(), self)
         self.name_label_font = QFont('Arial', 20)
         self.name_label_font.setBold(True)
         self.name_label.setFont(self.name_label_font)
         self.name_label.setContentsMargins(10, 40, 20, 10)
         self.name_label.setAlignment(Qt.AlignLeft)
 
-        self.ip_label = QLabel("Computer IP Address: " + get_ip(), self)
+        self.ip_label = QLabel("Computer IP Address: " + utils.get_ip(), self)
         self.ip_label_font = QFont('Arial', 20)
         self.ip_label_font.setBold(True)
         self.ip_label.setFont(self.ip_label_font)
         self.ip_label.setContentsMargins(10, 40, 20, 10)
         self.ip_label.setAlignment(Qt.AlignLeft)
 
-        qr_image = generate_qr_code()
-        qr_pixmap = pil2pixmap(qr_image)
+        qr_image = utils.generate_qr_code(utils.get_ip())
+        qr_pixmap = utils.pil2pixmap(qr_image)
         self.imageLabel = QLabel()
         self.imageLabel.setAlignment(Qt.AlignCenter)
         self.imageLabel.setContentsMargins(10, 30, 10, 30)
@@ -708,10 +393,10 @@ class ZankRemoteApplication(QApplication):
         self.setOrganizationName("Zank Remote")
         self.setOrganizationDomain("https://zankremote.com")
 
-        self.udp_communication = UDPCommunication()
+        self.udp_communication = communication.UDPCommunication()
         self.udp_communication.make_server()
 
-        self.tcp_communication = TCPCommunication()
+        self.tcp_communication = communication.TCPCommunication()
         self.tcp_communication.make_server()
 
         self.app_icon = QIcon("app_icon_round.png")
@@ -761,6 +446,9 @@ class ZankRemoteApplication(QApplication):
         # Add the menu to the tray
         self.tray.setContextMenu(self.menu)
 
+
+        self.tray.activated.connect(self.system_icon)
+
         # TODO: Check and stop all thread before quit application
         # self.aboutToQuit.connect(self.closeEvent()
 
@@ -798,10 +486,14 @@ class ZankRemoteApplication(QApplication):
         else:
             event.ignore()
 
+    def system_icon(self, reason):
+        if reason == QSystemTrayIcon.Trigger:
+            print('Clicked')
+            self.tray.contextMenu().popup(QCursor.pos())
+            # self.controlPanelMainWindow.show_top()
 
 
 if __name__ == '__main__':
     app = ZankRemoteApplication(sys.argv)
     app.exec_()
-
     # sys.exit(app.exec_())

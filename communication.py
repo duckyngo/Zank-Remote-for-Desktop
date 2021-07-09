@@ -1,20 +1,68 @@
 import socket
 import time
-import json
+import pyautogui
 from PySide2 import QtCore
+from PySide2.QtCore import QThread, Signal, QThreadPool, QRunnable
 
-"""
-https://docs.python.org/3/howto/sockets.html
-Data frame:
-!ASCII length of data!json data
-"""
+import utils
+
+screenWidth, screenHeight = pyautogui.size()
+currentMouseX, currentMouseY = pyautogui.position()
+
+pyautogui.PAUSE = 0
+pyautogui.FAILSAFE = False
+
+localIP = "0.0.0.0"
+
+UDPLocalPort = 1028
+TCPLocalPort = 1029
+hostName = utils.get_computer_host_name()
+bufferSize = 4080
+hostIP = utils.get_ip()
+
+isRunning = False
+
+print("Host name: " + hostName + ", IP: " + hostIP)
+
+hostNameInBytes = str.encode(hostName)
 
 
-class Communication(QtCore.QThread):
-    new_data = QtCore.Signal(object)
+class Runnable(QRunnable):
+
+    def __init__(self, xpos, ypos):
+        super().__init__()
+        self.xpos = xpos
+        self.ypos = ypos
+        self.isRunning = False
+        self.isFinished = False
+
+    def run(self):
+        start = time.time()
+
+
+        self.isRunning = True
+        print(self.xpos, self.ypos)
+        current_mouse_x, current_mouse_y = pyautogui.position()
+
+        next_mouse_x = current_mouse_x + self.xpos
+        next_mouse_y = current_mouse_y + self.ypos
+
+        next_mouse_x = utils.clamp(next_mouse_x, 0, screenWidth)
+        next_mouse_y = utils.clamp(next_mouse_y, 0, screenHeight)
+
+        pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
+        self.isRunning = False
+        self.isFinished = True
+
+        end = time.time()
+        print("Runnable time: ", end - start)
+
+
+class TCPCommunication(QThread):
+    new_data = Signal(object)
 
     def __init__(self):
-        QtCore.QThread.__init__(self, parent=None)
+        QThread.__init__(self, parent=None)
         print("comm.. init")
         self.port = 9200
         self.ip = "0.0.0.0"
@@ -49,26 +97,11 @@ class Communication(QtCore.QThread):
     def send_message(self, message):
         print("send_message")
         if self.is_connected:
-            msg_json = json.dumps(message).encode()
+            # msg_json = json.dumps(message).encode()
+            msg_json = "fff"
             header = "!" + str(len(msg_json)) + "!"
             msg = b''.join([header.encode(), msg_json])
             self.s.send(msg)
-
-    def get_message(self):
-        print("get_message")
-        data = self.s.recv(1024).strip().decode("utf-8")
-        print("Get: ", data)
-        # if data == "!":
-        #     data = self.s.recv(1).strip().decode("utf-8")
-        #     length = 0
-        #     while data != "!":
-        #         length = length*10+int(data)
-        #         data = self.s.recv(1).strip().decode("utf-8")
-        #     try:
-        #         data = json.loads(self.s.recv(length).strip().decode("utf-8"))
-        #         self.new_data.emit(data)
-        #     except ValueError:
-        #         print("JSON error\n")
 
     def stop(self):
         print("comm...stop")
@@ -82,21 +115,141 @@ class Communication(QtCore.QThread):
     def run(self):
         print("running....")
         while self.running:
-            if self.is_server and self.reconnect_server:
+
+            try:
                 self.server.listen(1)
                 self.s, addr = self.server.accept()
                 self.reconnect_server = False
                 self.is_connected = True
                 print(addr)
 
-            try:
-                self.get_message()
-                time.sleep(.05)
-            except socket.error:
-                self.reconnect_server = True
-                self.is_connected = False
+                data = self.s.recv(1024).strip().decode("utf-8")
+                print("Get: ", data)
+
+            except Exception as err:
+                exception_type = type(err).__name__
+                print("ERROR UDP: ", exception_type)
 
     def dissconect(self):
         self.s.close()
         self.server.close()
 
+
+class UDPCommunication(QThread):
+    new_data = Signal(object)
+
+    def __init__(self):
+        QThread.__init__(self, parent=None)
+        print("comm.. init")
+        self.port = 1028
+        self.ip = "0.0.0.0"
+        self.is_server = False
+        self.reconnect_server = False
+        # socket for client or server socket for communication
+        # self.s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # self.s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # socket for server
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.is_connected = False
+        self.running = True
+        self.runnable = None
+        self.count = 0
+        self.threadpool = QThreadPool()
+        self.threadpool.setExpiryTimeout(300)
+        self.threadpool.setMaxThreadCount(50)
+        print("Max Thread Pool Count: ", self.threadpool.maxThreadCount())
+        self.host_ip = utils.get_ip()
+        self.host_name = socket.gethostname()
+        self.host_name_in_bytes = str.encode(self.host_name + " - " + self.host_ip)
+
+
+    def set_ip(self, ip):
+        self.ip = ip
+
+    def make_connect(self):
+        print("UDP make_connect...")
+        self.s.connect((self.ip, self.port))
+        self.is_server = False
+        self.is_connected = True
+        self.start()
+
+    def make_server(self):
+        print("UDP make_server...")
+        self.server.bind((self.ip, self.port))
+        self.is_server = True
+        self.reconnect_server = True
+        self.start()
+
+    def send_message(self, message):
+        print("send_mesdssage udp")
+        if self.is_connected:
+            # msg_json = json.dumps(message).encode()
+            msg_json = "fff"
+            header = "!" + str(len(msg_json)) + "!"
+            msg = b''.join([header.encode(), msg_json])
+            self.s.sendall(msg)
+
+    def stop(self):
+        print("UDP stop...")
+        if self.is_connected:
+            self.is_connected = False
+            self.s.close()
+            if self.is_server:
+                self.server.close()
+        self.running = False
+
+    def run(self):
+        print("UDP running...")
+        while self.running:
+            # try:
+
+                bytes_address_pair = self.server.recvfrom(1028)
+                message, address = bytes_address_pair[0], bytes_address_pair[1]
+
+                clientMsg = "Message from Client:{}".format(message)
+                clientIP = "Client IP Address:{}".format(address)
+
+                print(clientMsg)
+                print(clientIP)
+
+                if message.startswith('getName'.encode()):
+                    self.server.sendto(hostNameInBytes, address)
+
+                elif message.startswith('move'.encode()):
+
+                    start = time.time()
+                    string_message = message.decode()
+                    string_tokens = string_message.split(" ")
+                    xpos = int(string_tokens[1])
+                    ypos = int(string_tokens[2])
+                    if self.runnable is None or self.runnable.isFinished:
+                        self.count = 0
+                        self.runnable = Runnable(xpos, ypos)
+                        # QThreadPool.globalInstance().setExpiryTimeout(500)
+                        self.threadpool.start(self.runnable, priority=QThread.Priority.HighestPriority)
+                    else:
+                        self.count += 1
+                        print("isRunning True", self.count, self.threadpool.activeThreadCount())
+                        if self.count > 3:
+                            self.threadpool.clear()
+                            self.runnable = None
+
+                    end = time.time()
+                    print(end - start)
+
+                elif message.startswith('click'.encode()):
+                    print("Click....")
+                    pyautogui.click()
+
+                elif message.startswith('setText'.encode()):
+                    print("setText....")
+                    string_message = message.decode()
+                    string_tokens = string_message.split(" ")
+                    lastReceiveWord = string_tokens[1]
+            # except Exception as err:
+            #     exception_type = type(err).__name__
+            #     print("ERROR UDP: ", exception_type, err)
+
+    def dissconect(self):
+        self.server.close()
