@@ -1,7 +1,6 @@
 import socket
 import time
 import pyautogui
-from PySide2 import QtCore
 from PySide2.QtCore import QThread, Signal, QThreadPool, QRunnable
 
 import utils
@@ -33,25 +32,11 @@ class Runnable(QRunnable):
         super().__init__()
         self.xpos = xpos
         self.ypos = ypos
-        self.isRunning = False
         self.isFinished = False
 
     def run(self):
         start = time.time()
-
-
-        self.isRunning = True
-        print(self.xpos, self.ypos)
-        current_mouse_x, current_mouse_y = pyautogui.position()
-
-        next_mouse_x = current_mouse_x + self.xpos
-        next_mouse_y = current_mouse_y + self.ypos
-
-        next_mouse_x = utils.clamp(next_mouse_x, 0, screenWidth)
-        next_mouse_y = utils.clamp(next_mouse_y, 0, screenHeight)
-
-        pyautogui.moveTo(next_mouse_x, next_mouse_y, logScreenshot=False, _pause=False)
-        self.isRunning = False
+        pyautogui.moveRel(self.xpos, self.ypos, logScreenshot=False, _pause=False)
         self.isFinished = True
 
         end = time.time()
@@ -226,11 +211,10 @@ class UDPCommunication(QThread):
                     if self.runnable is None or self.runnable.isFinished:
                         self.count = 0
                         self.runnable = Runnable(xpos, ypos)
-                        # QThreadPool.globalInstance().setExpiryTimeout(500)
                         self.threadpool.start(self.runnable, priority=QThread.Priority.HighestPriority)
                     else:
                         self.count += 1
-                        print("isRunning True", self.count, self.threadpool.activeThreadCount())
+                        print("isRunning True, Count: ", self.count, "ActiveCount: ", self.threadpool.activeThreadCount())
                         if self.count > 3:
                             self.threadpool.clear()
                             self.runnable = None
@@ -238,16 +222,20 @@ class UDPCommunication(QThread):
                     end = time.time()
                     print(end - start)
 
+
+
                 elif message.startswith('click'.encode()):
                     print("Click....")
                     pyautogui.click()
-
-                elif message.startswith('setText'.encode()):
-                    print("setText....")
+                elif message.startswith('setText '.encode()):
                     string_message = message.decode()
-                    string_tokens = string_message.split(" ")
-                    lastReceiveWord = string_tokens[1]
-            # except Exception as err:
+                    print("setText....", string_message)
+                    lastReceiveWord = string_message[len("setText "):]
+                    print(lastReceiveWord)
+                    pyautogui.write(lastReceiveWord)
+                    # pyperclip.copy(lastReceiveWord)
+                    # pyautogui.hotkey("ctrl", "v")
+            # except Exception as err:a a a a
             #     exception_type = type(err).__name__
             #     print("ERROR UDP: ", exception_type, err)
 
