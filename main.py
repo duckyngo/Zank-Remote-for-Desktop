@@ -5,11 +5,13 @@ import pyautogui
 import time
 import sys
 
-from PySide2 import QtWidgets
+import pyperclip
+from PySide2 import QtWidgets, QtGui
 from PySide2.QtGui import QIcon, QPalette, QPixmap, QImage, QCursor, QFont
 from PySide2.QtWidgets import (QWidget, QPushButton, QApplication, QGridLayout, QVBoxLayout, QSystemTrayIcon, QMenu,
                                QAction, QHBoxLayout, QLabel, QSizePolicy, QTabWidget, QMainWindow, QScrollArea)
-from PySide2.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer, QThreadPool, QRunnable, QCoreApplication, QUrl
+from PySide2.QtCore import Qt, QThread, QObject, Signal, Slot, QTimer, QThreadPool, QRunnable, QCoreApplication, QUrl, \
+    QPoint, QBuffer, QIODevice
 from PySide2.QtWebEngineWidgets import QWebEngineView
 
 import qrcode
@@ -20,6 +22,7 @@ from sys import platform as _platform
 
 import communication
 import utils
+import osascript
 
 
 class PlatformName(Enum):
@@ -387,6 +390,8 @@ class ZankRemoteApplication(QApplication):
             the exec_loop."""
         QApplication.__init__(self, args)
 
+        self.hide_volume_icon_timer = None
+
         self.setQuitOnLastWindowClosed(False)
         # Communication
         self.setApplicationName("Zank Remote Desktop")
@@ -408,7 +413,88 @@ class ZankRemoteApplication(QApplication):
 
         self.tutorialsWindow = TutorialMainWindow()
 
+        self.udp_communication.keyboard_new_event.connect(self.key_board_show_temp_word)
+        self.udp_communication.keyboard_final_event.connect(self.keyboard_write_final_word)
+        self.udp_communication.volume_event.connect(self.volume_event)
+
+        self.udp_communication.mouse_move_event.connect(self.mouse_move_event)
+        self.udp_communication.mouse_click_event.connect(self.mouse_click_event)
+        self.udp_communication.mouse_scroll_event.connect(self.mouse_scrool_event)
+
         self.addWidgets()
+
+    @Slot(str)
+    def mouse_move_event(self, string_message):
+        start = time.time()
+
+        string_tokens = string_message.split(" ")
+        xpos = int(string_tokens[1])
+        ypos = int(string_tokens[2])
+        pyautogui.moveRel(xpos, ypos, logScreenshot=False, _pause=False)
+
+        end = time.time()
+        print("Runnable time: ", end - start)
+
+    @Slot(str)
+    def mouse_click_event(self, click_type):
+        if click_type == "click":
+            pyautogui.click()
+        elif click_type == "doubleClick":
+            pyautogui.doubleClick()
+
+    @Slot(str)
+    def mouse_scrool_event(self, string_message):
+        print("Scroll event: ", string_message)
+
+
+
+
+    @Slot(str)
+    def volume_event(self, event_type):
+
+        if PLATFORM_NAME == PlatformName.MACOS:
+
+            print("volume_event", event_type)
+
+            if event_type == "volumeMute":
+                target_volume = 0
+                vol = "set volume output volume " + str(target_volume)
+                osascript.osascript(vol)
+            else:
+                target_volume = 50
+                current_volume = int(utils.get_current_volume())
+                if event_type == "volumeUp":
+                    target_volume = current_volume + 6
+                elif event_type == "volumeDown":
+                    target_volume = current_volume - 6
+
+            vol = "set volume output volume " + str(target_volume)
+            osascript.osascript(vol)
+
+        QtWidgets.QToolTip.hideText()
+        utils.show_volume_image(target_volume)
+        self.start_timer()
+
+    def start_timer(self):
+        if self.hide_volume_icon_timer:
+            self.hide_volume_icon_timer.stop()
+            self.hide_volume_icon_timer.deleteLater()
+        self.hide_volume_icon_timer = QTimer()
+        self.hide_volume_icon_timer.timeout.connect(utils.hide_qtooltip())
+        self.hide_volume_icon_timer.setSingleShot(True)
+        self.hide_volume_icon_timer.start(3000)
+
+    @Slot(str)
+    def key_board_show_temp_word(self, text):
+        QtWidgets.QToolTip.showText(QtGui.QCursor.pos(), text)
+
+    @Slot(str)
+    def keyboard_write_final_word(self, text):
+        QtWidgets.QToolTip.hideText()
+        pyperclip.copy(text)
+        pyautogui.hotkey('command', 'v')
+        pyperclip.copy('')
+
 
     def addWidgets(self):
         """ In this method, we're adding widgets and connecting signals from

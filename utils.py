@@ -1,11 +1,15 @@
 import socket
 
+import osascript
 import qrcode
 from PIL import Image
 from sys import platform
 
-from PySide2.QtGui import QImage, QPixmap
+from PySide2 import QtWidgets
+from PySide2.QtCore import QBuffer, QIODevice, QPoint, QTimer, QRect, QSize
+from PySide2.QtGui import QImage, QPixmap, Qt
 
+import communication
 from main import PlatformName
 
 
@@ -97,3 +101,68 @@ def pil2pixmap(im):
     qim = QImage(data, im.size[0], im.size[1], QImage.Format_ARGB32)
     pixmap = QPixmap.fromImage(qim)
     return pixmap
+
+
+def get_current_volume():
+    result = osascript.osascript('get volume settings')
+    volInfo = result[1].split(',')
+    output_vol = volInfo[0].replace('output volume:', '')
+    return output_vol
+
+
+def show_volume_image(target_volume):
+        pixmap = QPixmap(get_image_path_from_volume(target_volume))
+        buffer = QBuffer()
+        buffer.open(QIODevice.WriteOnly)
+        pixmap.save(buffer, "png", quality=100)
+        image = bytes(buffer.data().toBase64()).decode()
+        html = '<img src="data:image/png;base64,{}">'.format(image)
+
+        QtWidgets.QToolTip.showText(QPoint(communication.screenWidth / 2 - 100, communication.screenHeight - 200),
+                                    html)
+
+
+def get_image_path_from_volume(target_volume):
+    if target_volume <= 0:
+        return "volume_levelOFF.png"
+
+    print("target volume: ", target_volume, (target_volume / 10) * 16)
+
+    target_volume = (target_volume / 10) * 16
+    if 0 < target_volume <= 10:
+        return "volume_level1.png"
+    elif 10 < target_volume <= 20:
+        return "volume_level2.png"
+    elif 20 < target_volume <= 30:
+        return "volume_level3.png"
+    elif 30 < target_volume <= 40:
+        return "volume_level4.png"
+    elif 40 < target_volume <= 50:
+        return "volume_level5.png"
+    elif 50 < target_volume <= 60:
+        return "volume_level6.png"
+    elif 60 < target_volume <= 70:
+        return "volume_level7.png"
+    elif 70 < target_volume <= 80:
+        return "volume_level8.png"
+    elif 80 < target_volume <= 90:
+        return "volume_level9.png"
+    elif 90 < target_volume <= 100:
+        return "volume_level10.png"
+    elif 100 < target_volume <= 110:
+        return "volume_level11.png"
+    elif 110 < target_volume <= 120:
+        return "volume_level12.png"
+    elif 120 < target_volume <= 130:
+        return "volume_level13.png"
+    elif 130 < target_volume <= 140:
+        return "volume_level14.png"
+    elif 140 < target_volume <= 150:
+        return "volume_level15.png"
+    elif target_volume > 150:
+        return "volume_level16.png"
+
+
+def hide_qtooltip():
+    QtWidgets.QToolTip.hideText()
+

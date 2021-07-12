@@ -8,7 +8,7 @@ import utils
 screenWidth, screenHeight = pyautogui.size()
 currentMouseX, currentMouseY = pyautogui.position()
 
-pyautogui.PAUSE = 0
+pyautogui.PAUSE = 0.01
 pyautogui.FAILSAFE = False
 
 localIP = "0.0.0.0"
@@ -121,7 +121,12 @@ class TCPCommunication(QThread):
 
 
 class UDPCommunication(QThread):
-    new_data = Signal(object)
+    keyboard_new_event = Signal(object)
+    keyboard_final_event = Signal(object)
+    volume_event = Signal(object)
+    mouse_move_event = Signal(object)
+    mouse_click_event = Signal(object)
+    mouse_scroll_event = Signal(object)
 
     def __init__(self):
         QThread.__init__(self, parent=None)
@@ -140,6 +145,7 @@ class UDPCommunication(QThread):
         self.running = True
         self.runnable = None
         self.count = 0
+        self.last_move_time = 0
         self.threadpool = QThreadPool()
         self.threadpool.setExpiryTimeout(300)
         self.threadpool.setMaxThreadCount(50)
@@ -167,7 +173,7 @@ class UDPCommunication(QThread):
         self.start()
 
     def send_message(self, message):
-        print("send_mesdssage udp")
+        print("send_messsage udp")
         if self.is_connected:
             # msg_json = json.dumps(message).encode()
             msg_json = "fff"
@@ -188,7 +194,6 @@ class UDPCommunication(QThread):
         print("UDP running...")
         while self.running:
             # try:
-
                 bytes_address_pair = self.server.recvfrom(1028)
                 message, address = bytes_address_pair[0], bytes_address_pair[1]
 
@@ -205,37 +210,76 @@ class UDPCommunication(QThread):
 
                     start = time.time()
                     string_message = message.decode()
-                    string_tokens = string_message.split(" ")
-                    xpos = int(string_tokens[1])
-                    ypos = int(string_tokens[2])
-                    if self.runnable is None or self.runnable.isFinished:
-                        self.count = 0
-                        self.runnable = Runnable(xpos, ypos)
-                        self.threadpool.start(self.runnable, priority=QThread.Priority.HighestPriority)
-                    else:
-                        self.count += 1
-                        print("isRunning True, Count: ", self.count, "ActiveCount: ", self.threadpool.activeThreadCount())
-                        if self.count > 3:
-                            self.threadpool.clear()
-                            self.runnable = None
+
+                    now = time.time()
+                    if now - self.last_move_time > 0.03:
+                        self.mouse_move_event.emit(string_message)
+                        self.last_move_time = now
+
+                    # if self.runnable is None or self.runnable.isFinished:
+                    #     self.count = 0
+                    #     self.runnable = Runnable(xpos, ypos)
+                    #     self.threadpool.start(self.runnable, priority=QThread.Priority.HighestPriority)
+                    # else:
+                    #     self.count += 1
+                    #     print("isRunning True, Count: ", self.count, "ActiveCount: ", self.threadpool.activeThreadCount())
+                    #     if self.count > 3:
+                    #         self.threadpool.clear()
+                    #         self.runnable = None
 
                     end = time.time()
                     print(end - start)
 
-
-
                 elif message.startswith('click'.encode()):
                     print("Click....")
-                    pyautogui.click()
+                    self.mouse_click_event.emit("click")
+
                 elif message.startswith('setText '.encode()):
                     string_message = message.decode()
                     print("setText....", string_message)
-                    lastReceiveWord = string_message[len("setText "):]
-                    print(lastReceiveWord)
-                    pyautogui.write(lastReceiveWord)
-                    # pyperclip.copy(lastReceiveWord)
-                    # pyautogui.hotkey("ctrl", "v")
-            # except Exception as err:a a a a
+                    last_receive_word = string_message[len("setText "):]
+                    print(last_receive_word)
+                    self.keyboard_new_event.emit(last_receive_word)
+
+                elif message.startswith('setFinalText '.encode()):
+                    string_message = message.decode()
+                    print("setFinalText....", string_message)
+                    last_receive_word = string_message[len("setFinalText "):]
+                    print(last_receive_word)
+                    self.keyboard_final_event.emit(last_receive_word)
+
+                elif message == 'scrollUp'.encode():
+                    pyautogui.scroll(30)
+
+                elif message == 'scrollDown'.encode():
+                    pyautogui.scroll(-30)
+
+                elif message == 'pageRight'.encode():
+                    pyautogui.hscroll(10)
+
+                elif message == 'pageLeft'.encode():
+                    pyautogui.hscroll(-10)
+
+                elif message == 'pageUp'.encode():
+                    pyautogui.scroll(100)
+
+                elif message == 'pageDown'.encode():
+                    pyautogui.scroll(-100)
+
+                elif message == 'volumeUp'.encode()\
+                        or message == 'volumeDown'.encode()\
+                        or message == 'volumeMute'.encode():
+                    print("volume", message)
+                    self.volume_event.emit(message.decode())
+
+                elif message == 'hideMouse'.encode():
+                    print("hideMouse")
+
+
+
+
+
+        # except Exception as err:a a a a
             #     exception_type = type(err).__name__
             #     print("ERROR UDP: ", exception_type, err)
 
