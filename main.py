@@ -56,7 +56,6 @@ class TutorialMainWindow(QMainWindow):
         self.widget = QWidget()                 # Widget that contains the collection of Vertical Box
         self.vbox = QVBoxLayout()               # The Vertical Box that contains the Horizontal Boxes of  labels and buttons
 
-
         self.notice_title = QLabel("Notice:", self)
         self.notice_title_font = QFont('Arial', 26)
         self.notice_title_font.setBold(True)
@@ -99,7 +98,7 @@ class TutorialMainWindow(QMainWindow):
         self.accessibility_detail_step2.setAlignment(Qt.AlignLeft)
         self.accessibility_detail_step2.setWordWrap(True)
 
-        self.appPixmap_2 = QPixmap('tut1.png')
+        self.appPixmap_2 = QPixmap('images/tut1.png')
         self.access_step_2 = QLabel()
         self.access_step_2.setAlignment(Qt.AlignCenter)
         self.scaled = self.appPixmap_2.scaled(self.access_step_2.size(), Qt.KeepAspectRatio)
@@ -115,7 +114,7 @@ class TutorialMainWindow(QMainWindow):
         self.accessibility_detail_step3.setAlignment(Qt.AlignLeft)
         self.accessibility_detail_step3.setWordWrap(True)
 
-        self.appPixmap_3 = QPixmap('tut1.png')
+        self.appPixmap_3 = QPixmap('images/tut1.png')
         self.access_step_3 = QLabel()
         self.access_step_3.setAlignment(Qt.AlignCenter)
         self.scaled = self.appPixmap_3.scaled(self.access_step_3.size(), Qt.KeepAspectRatio)
@@ -179,7 +178,6 @@ class TutorialMainWindow(QMainWindow):
         self.activateWindow()
 
 
-
 class WebViewMainWindow(QMainWindow):
 
     def __init__(self, url):
@@ -189,7 +187,7 @@ class WebViewMainWindow(QMainWindow):
 
     def initUI(self):
         self.view = QWebEngineView()
-        self.app_icon = QIcon("app_icon_round.png")
+        self.app_icon = QIcon(utils.resource_path("images/app_icon_round.png"))
 
         self.view.load(QUrl(self.url))
 
@@ -334,7 +332,7 @@ class ControlPanelTabWidget(QWidget):
 
         # Create third tab
 
-        self.appPixmap = QPixmap('app_icon_rgb.jpg')
+        self.appPixmap = QPixmap(utils.resource_path('images/app_icon_rgb.jpg'))
 
         self.appImageLabel = QLabel()
         self.appImageLabel.setAlignment(Qt.AlignCenter)
@@ -358,17 +356,17 @@ class ControlPanelTabWidget(QWidget):
         # self.app_slogan_label.setContentsMargins(10, 40, 20, 10)
         self.app_slogan_label.setAlignment(Qt.AlignCenter)
 
-        self.app_web_label = QLabel("www.zankremote.com", self)
-        self.app_web_label_font = QFont('Arial', 14)
-        self.app_web_label.setFont(self.app_web_label_font)
-        # self.app_slogan_label.setContentsMargins(10, 40, 20, 10)
-        self.app_web_label.setAlignment(Qt.AlignCenter)
+        # self.app_web_label = QLabel("www.zankremote.com", self)
+        # self.app_web_label_font = QFont('Arial', 14)
+        # self.app_web_label.setFont(self.app_web_label_font)
+        # # self.app_slogan_label.setContentsMargins(10, 40, 20, 10)
+        # self.app_web_label.setAlignment(Qt.AlignCenter)
 
         self.aboutTab.layout = QVBoxLayout(self)
         self.aboutTab.layout.addWidget(self.appImageLabel)
         self.aboutTab.layout.addWidget(self.app_name_label)
         self.aboutTab.layout.addWidget(self.app_slogan_label)
-        self.aboutTab.layout.addWidget(self.app_web_label)
+        # self.aboutTab.layout.addWidget(self.app_web_label)
         self.aboutTab.setLayout(self.aboutTab.layout)
 
         # Add tabs to widget
@@ -406,9 +404,9 @@ class ZankRemoteApplication(QApplication):
         self.tcp_communication = communication.TCPCommunication()
         self.tcp_communication.make_server()
 
-        self.app_icon = QIcon("app_icon_round.png")
+        self.app_icon = QIcon(utils.resource_path("images/app_icon_round.png"))
         self.showIpWindow = ShowIPWindow()
-        self.icon = QIcon("app_icon_round.png")
+        self.icon = QIcon(utils.resource_path("images/app_icon_round.png"))
 
         self.controlPanelMainWindow = ControlPanelMainWindow()
         self.showIpWindow = ShowIPWindow()

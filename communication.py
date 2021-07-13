@@ -8,7 +8,7 @@ import utils
 screenWidth, screenHeight = pyautogui.size()
 currentMouseX, currentMouseY = pyautogui.position()
 
-pyautogui.PAUSE = 0.01
+pyautogui.PAUSE = 0
 pyautogui.FAILSAFE = False
 
 localIP = "0.0.0.0"
@@ -212,7 +212,7 @@ class UDPCommunication(QThread):
                     string_message = message.decode()
 
                     now = time.time()
-                    if now - self.last_move_time > 0.03:
+                    if now - self.last_move_time > 0.02:
                         self.mouse_move_event.emit(string_message)
                         self.last_move_time = now
 
