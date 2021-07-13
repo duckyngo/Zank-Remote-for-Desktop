@@ -22,7 +22,6 @@ from sys import platform as _platform
 
 import communication
 import utils
-import osascript
 
 
 class PlatformName(Enum):
@@ -36,6 +35,7 @@ if _platform == "darwin":
     from AppKit import NSWorkspace
     from Foundation import NSURL
     PLATFORM_NAME = PlatformName.MACOS
+    import osascript
 
 elif _platform == "linux" or _platform == "linux2":
     # Linux
@@ -255,6 +255,7 @@ class ShowIPWindow(QWidget):
         self.raise_()
         # this will activate the window
         self.activateWindow()
+        self.ip_label.setText(utils.get_ip())
 
 
 class ControlPanelMainWindow(QMainWindow):
@@ -281,6 +282,7 @@ class ControlPanelMainWindow(QMainWindow):
         self.raise_()
         # this will activate the window
         self.activateWindow()
+        self.table_widget.ip_label.setText(utils.get_ip())
 
 
 class ControlPanelTabWidget(QWidget):
@@ -471,9 +473,17 @@ class ZankRemoteApplication(QApplication):
             vol = "set volume output volume " + str(target_volume)
             osascript.osascript(vol)
 
-        QtWidgets.QToolTip.hideText()
-        utils.show_volume_image(target_volume)
-        self.start_timer()
+            QtWidgets.QToolTip.hideText()
+            utils.show_volume_image(target_volume)
+            self.start_timer()
+        elif PLATFORM_NAME == PlatformName.WINDOW:
+            if event_type == "volumeMute":
+                pyautogui.press("volumemute")
+            else:
+                if event_type == "volumeUp":
+                    pyautogui.press("volumeup")
+                elif event_type == "volumeDown":
+                    pyautogui.press("volumedown")
 
     def start_timer(self):
         if self.hide_volume_icon_timer:
@@ -511,9 +521,9 @@ class ZankRemoteApplication(QApplication):
         # Create the menu
         self.menu = QMenu()
 
-        self.see_tutorials = QAction("Tutorials")
-        self.see_tutorials.triggered.connect(self.tutorialsWindow.show_top)
-        self.menu.addAction(self.see_tutorials)
+        # self.see_tutorials = QAction("Tutorials")
+        # self.see_tutorials.triggered.connect(self.tutorialsWindow.show_top)
+        # self.menu.addAction(self.see_tutorials)
 
         self.show_ip_window = QAction("Show IP Address")
         self.show_ip_window.triggered.connect(self.showIpWindow.show_top)

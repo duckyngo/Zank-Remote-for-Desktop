@@ -1,6 +1,5 @@
 import socket
 
-import osascript
 import qrcode
 from PIL import Image
 from sys import platform
