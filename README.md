@@ -5,7 +5,7 @@
 
 ![Workflow result](https://github.com/2307vivek/Adopty/workflows/Check/badge.svg)
 
-<img src="imgs/air_mouse.gif" width="500">
+<img src="imgs/air_mouse.gif" width="250">
 
 ## This is a beta version of Zank Remote application to control the computer mouse and keyboard on your Desktop
 
@@ -26,8 +26,8 @@ Download Zank Remote for TV Box  app for your phone.
 [Android](https://play.google.com/store/apps/details?id=zank.remote) or [iOS](https://apps.apple.com/bh/app/zank-remote-for-android-tv-box/id1567602430))
 
 <p float="left">
-<img src="imgs/IMG_1663.PNG" width="320">
-<img src="imgs/IMG_1664.PNG" width="320">
+<img src="imgs/IMG_1663.PNG" width="230">
+<img src="imgs/IMG_1664.PNG" width="230">
 </p>
 
 In  order to remote your Desktop, **Allow** the application to connect to devices on local network.
@@ -37,11 +37,11 @@ Using QR code scanner or input your  Desktops’ IP address.
 ## Notes:
 Your desktop and your phone need to be connected to the same LAN. The phone connects to the wireless network, the computer can connect to the wireless or wired network, as long as it is the same IP range.
 
-<img src="imgs/mouse_pad.gif" width="500">
+<img src="imgs/mouse_pad.gif" width="250">
 
 
 Next plans:
 - [ ] Speech Recognition
 - [ ] Speech Command Features
 
-Please give me ideas on how to improve the applications!
+Please contact me if you have any ideas on how to improve the applications!
