@@ -3,8 +3,6 @@
 
 # Zank-Remote-for-Desktop (Beta)
 
-![Workflow result](https://github.com/2307vivek/Adopty/workflows/Check/badge.svg)
-
 <img src="imgs/air_mouse.gif" width="250">
 
 ## This is a beta version of Zank Remote application to control the computer mouse and keyboard on your Desktop
