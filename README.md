@@ -21,7 +21,7 @@ Open Zank Remote from System Tray => Click Show IP address
 
 ### Mobile
 Download Zank Remote for TV Box  app for your phone.
-[Android](https://play.google.com/store/apps/details?id=zank.remote) or [iOS](https://apps.apple.com/bh/app/zank-remote-for-android-tv-box/id1567602430))
+[Android](https://play.google.com/store/apps/details?id=zank.remote) or [iOS](https://apps.apple.com/us/app/zank-remote-for-smart-tvs-box/id1567602430))
 
 <p float="left">
 <img src="imgs/IMG_1663.PNG" width="230">
